@@ -6,6 +6,17 @@ DROP TABLE IF EXISTS events;
 DROP TABLE IF EXISTS asks;
 DROP TABLE IF EXISTS sources;
 DROP TABLE IF EXISTS projects;
+DROP TABLE IF EXISTS users;
+
+-- Χρήστες: κάθε χρήστης αναγνωρίζεται από το email του
+-- NOTE: Phase A sets id = email. Phase B (Better Auth) may use its own user ID scheme;
+-- reconcile this during auth wiring to avoid duplicate identity records.
+CREATE TABLE users (
+  id          TEXT PRIMARY KEY,
+  email       TEXT NOT NULL UNIQUE,
+  name        TEXT,
+  created_at  TEXT DEFAULT (datetime('now'))
+);
 
 -- Έργα (outcomes rollup)
 CREATE TABLE projects (
@@ -34,7 +45,8 @@ CREATE TABLE asks (
   source_id     TEXT REFERENCES sources(id),
   kind          TEXT DEFAULT 'action', -- action | decision | commitment | risk | blocker
   title         TEXT NOT NULL,
-  owner         TEXT,                  -- ποιος το χρωστάει
+  owner         TEXT,                  -- ποιος το χρωστάει (free text, legacy fallback)
+  owner_user_id TEXT REFERENCES users(id),  -- link to users table (preferred identity)
   requested_by  TEXT,
   due_date      TEXT,                  -- YYYY-MM-DD
   status        TEXT DEFAULT 'open',   -- open | accepted | done | overdue
@@ -54,14 +66,22 @@ CREATE TABLE events (
 
 CREATE INDEX idx_asks_project ON asks(project_id);
 CREATE INDEX idx_asks_status  ON asks(status);
+CREATE INDEX idx_asks_owner_user ON asks(owner_user_id);
 CREATE INDEX idx_sources_proj ON sources(project_id);
 
 -- Demo δεδομένα για να δεις κάτι αμέσως
 INSERT INTO projects (id, name, owner_email, inbox_alias)
 VALUES ('demo', 'Demo Project', 'you@example.com', 'demo');
 
-INSERT INTO asks (id, project_id, title, owner, requested_by, due_date, status, source_quote)
+-- Create demo users
+INSERT INTO users (id, email, name, created_at)
+VALUES 
+  ('you@example.com', 'you@example.com', 'You', datetime('now')),
+  ('vendor@acme.com', 'vendor@acme.com', 'Vendor', datetime('now')),
+  ('pm@internal.com', 'pm@internal.com', 'PM', datetime('now'));
+
+INSERT INTO asks (id, project_id, title, owner, owner_user_id, requested_by, due_date, status, source_quote)
 VALUES
- ('a1','demo','Στείλε το updated BRD','vendor@acme.com','you@example.com','2026-08-20','overdue','...can you send the updated BRD by Wed?'),
- ('a2','demo','Επιβεβαίωσε την ημερομηνία UAT','pm@internal.com','you@example.com','2026-08-30','accepted','let''s lock UAT for the 30th'),
- ('a3','demo','Απόφαση: πάμε με το MVP scope','you@example.com','steering','2026-08-25','open','we agreed to ship the MVP first');
+  ('a1','demo','Στείλε το updated BRD','vendor@acme.com','vendor@acme.com','you@example.com','2026-08-20','overdue','...can you send the updated BRD by Wed?'),
+  ('a2','demo','Επιβεβαίωσε την ημερομηνία UAT','pm@internal.com','pm@internal.com','you@example.com','2026-08-30','accepted','let''s lock UAT for the 30th'),
+  ('a3','demo','Απόφαση: πάμε με το MVP scope','you@example.com','you@example.com','steering','2026-08-25','open','we agreed to ship the MVP first');
