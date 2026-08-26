@@ -1,0 +1,776 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Relay — Project tracking</title>
+<style>
+  :root{--v:#6d28d9;--s:#0ea5e9;--ink:#111827;--grey:#5a6472;--line:#e5e7eb;--bg:#faf9ff;
+        --red:#b91c1c;--redbg:#fde8e8;--green:#166534;--greenbg:#e7f6ec;--blue:#075985;--bluebg:#e6f4fc}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;color:var(--ink);background:var(--bg)}
+  header{padding:22px 26px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;background:#fff;flex-wrap:wrap}
+  header b{font-size:22px;color:var(--v)}
+  header span.tagline{color:var(--grey);font-size:14px}
+  header .spacer{flex:1}
+  #whoami{font-size:13px;color:var(--grey);cursor:pointer;text-decoration:underline dotted}
+  main{max-width:1000px;margin:0 auto;padding:26px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
+  input,select,button,textarea{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
+  button{background:var(--v);color:#fff;border:0;cursor:pointer}
+  button.secondary{background:#fff;color:var(--v);border:1px solid var(--v)}
+  button.danger-outline{background:#fff;color:var(--red);border:1px solid #fecaca}
+  .tabs{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+  .tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  .tabs button.active{background:var(--v);color:#fff;border-color:var(--v)}
+  .legend{font-size:11.5px;color:var(--grey);margin-bottom:14px}
+  .helptext{font-size:11.5px;color:var(--grey);margin:-6px 0 12px 2px}
+  h3{margin:20px 0 3px}
+  textarea{width:100%;min-height:100px}
+
+  /* ---- Ask cards (βελτιωμένη εμφάνιση) ---- */
+  .card{background:#fff;border:1px solid var(--line);border-left:4px solid var(--line);
+        border-radius:10px;padding:14px 16px;margin-bottom:10px;
+        display:flex;justify-content:space-between;gap:14px;align-items:flex-start}
+  .card.st-open{border-left-color:#a5b4fc}
+  .card.st-accepted{border-left-color:var(--s)}
+  .card.st-done{border-left-color:var(--green)}
+  .card.st-overdue{border-left-color:var(--red)}
+  .title{font-weight:700;font-size:15px;color:var(--ink)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chip{font-size:12px;color:var(--grey);background:#f5f4fb;border-radius:8px;padding:3px 9px;white-space:nowrap}
+  .chip b{color:var(--ink);font-weight:600}
+  .quote{color:#8a7fb5;font-size:12px;font-style:italic;margin-top:8px;padding:6px 10px;
+         background:#faf8ff;border-left:2px solid #ddd6fe;border-radius:4px}
+  .pill{font-size:11.5px;padding:3px 10px;border-radius:999px;white-space:nowrap;display:inline-block;font-weight:600}
+  .open{background:#eef;color:#334}
+  .accepted{background:var(--bluebg);color:var(--blue)}
+  .done{background:var(--greenbg);color:var(--green)}
+  .overduebadge{background:var(--redbg);color:var(--red);margin-left:6px}
+  .actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center;margin-top:10px}
+  .actions button{padding:6px 10px;font-size:12px}
+  .locked-note{font-size:11px;color:var(--grey);white-space:nowrap}
+
+  .edit-form{width:100%}
+  .edit-grid{display:grid;grid-template-columns:2fr 1fr 150px 130px;gap:8px;margin-bottom:10px}
+  .edit-grid input,.edit-grid select{width:100%;min-width:0}
+  .delete-button{background:#fff !important;color:var(--red) !important;border:1px solid #fecaca !important}
+  .edit-button{background:#fff !important;color:var(--v) !important;border:1px solid #ddd6fe !important}
+  .cancel-button{background:#fff !important;color:var(--grey) !important;border:1px solid var(--line) !important}
+
+  /* ---- Dashboard ---- */
+  .stat-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
+  .stat-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center}
+  .stat-num{font-size:26px;font-weight:800;color:var(--ink)}
+  .stat-label{font-size:12px;color:var(--grey);margin-top:2px}
+  .stat-card.st-overdue .stat-num{color:var(--red)}
+  .stat-card.st-done .stat-num{color:var(--green)}
+  .stat-card.st-accepted .stat-num{color:var(--blue)}
+  table.report{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:22px}
+  table.report th{background:#f6f4fc;text-align:left;font-size:12px;color:var(--grey);padding:9px 12px;font-weight:600}
+  table.report td{padding:9px 12px;font-size:13px;border-top:1px solid var(--line)}
+  table.report td.num{text-align:center;font-weight:600}
+
+  @media (max-width:720px){
+    .edit-grid{grid-template-columns:1fr}
+    .card{flex-direction:column}
+    .stat-grid{grid-template-columns:repeat(2,1fr)}
+  }
+  /* ---- Dashboard extras: charts / exports / AI summary ---- */
+  .dash-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+  .dash-toolbar button{font-size:13px}
+  .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px}
+  .chart-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px}
+  .chart-card h4{margin:0 0 10px;font-size:13px;color:var(--grey)}
+  .chart-card canvas{max-height:240px}
+  .ai-summary{background:#fff;border:1px solid var(--line);border-left:4px solid var(--v);
+              border-radius:10px;padding:16px 18px;margin-bottom:22px}
+  .ai-summary h4{margin:0 0 8px;color:var(--v);font-size:14px}
+  .ai-summary p{margin:0 0 10px;font-size:14px;line-height:1.5}
+  .ai-summary ul{margin:6px 0 0;padding-left:18px;font-size:13px;line-height:1.6}
+  .ai-summary .risks li{color:var(--red)}
+  .ai-summary .loading{color:var(--grey);font-size:13px}
+  @media (max-width:720px){
+    .chart-grid{grid-template-columns:1fr}
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+</head>
+<body>
+<header>
+  <b>Relay</b><span class="tagline">Projects that run themselves</span>
+  <div class="spacer"></div>
+  <span id="whoami" title="Πάτα για αλλαγή ονόματος"></span>
+</header>
+<main>
+  <div class="row">
+    <label style="font-size:13px;color:var(--grey)">Project:</label>
+    <select id="projectSelect"></select>
+    <button class="secondary" onclick="createProject()">+ Νέο project</button>
+    <button class="danger-outline" onclick="deleteCurrentProject()">🗑 Διαγραφή project</button>
+  </div>
+
+  <div class="tabs">
+    <button data-f="" class="active">Όλα</button>
+    <button data-f="overdue">Καθυστερημένα</button>
+    <button data-f="accepted">Αποδεκτά</button>
+    <button data-f="done">Ολοκληρωμένα</button>
+    <button data-f="__dashboard__">📊 Dashboard</button>
+  </div>
+  <div class="legend" id="tabsLegend">
+    ℹ️ Accept = ανάληψη ask · Done = ολοκληρώθηκε · 🔒 = επεξεργασία μόνο από τον δημιουργό
+  </div>
+
+  <div id="dashboardView" style="display:none"></div>
+  <div id="list"></div>
+
+  <div id="createSection">
+    <h3>➕ Νέο ask</h3>
+    <div class="helptext">Τίτλος, owner (προαιρετικό) και ημερομηνία (προαιρετική).</div>
+    <div class="row">
+      <input id="t" placeholder="Τίτλος (π.χ. Στείλε το BRD)" style="flex:2;min-width:220px"/>
+      <input id="o" placeholder="Owner" style="flex:1;min-width:140px"/>
+      <input id="d" type="date" />
+      <button onclick="addAsk()">Προσθήκη</button>
+    </div>
+
+    <h3>📋 Capture κειμένου</h3>
+    <div class="helptext">Επικόλλησε email, chat ή πρακτικά συνάντησης — το AI εξάγει asks αυτόματα.</div>
+    <textarea id="paste" placeholder="Επικόλλησε κείμενο εδώ..."></textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="secondary" onclick="ingest()">✨ Εξαγωγή asks</button>
+      <button class="secondary" onclick="loadExample()">📝 Παράδειγμα</button>
+      <span id="msg" style="align-self:center;color:var(--grey)"></span>
+    </div>
+  </div>
+</main>
+
+<script>
+let filter = "";
+let currentUser = localStorage.getItem("relay_user") || "";
+let currentProject = localStorage.getItem("relay_project") || "";
+
+const EXAMPLE_MOM =
+  "Θέμα: Πρακτικά συνάντησης — Project Kickoff, 25/08\n\n" +
+  "Παρόντες: Άννα (Project Lead), Κώστας (Vendor A), Ελένη (QA)\n\n" +
+  "Συζητήσαμε τα εξής:\n\n" +
+  "1. Ο Κώστας πρέπει να στείλει το τεχνικό προσχέδιο μέχρι την Παρασκευή.\n" +
+  "2. Η Ελένη θα ετοιμάσει το test plan μέχρι 2026-09-05.\n" +
+  "3. Αποφασίσαμε να προχωρήσουμε με την επιλογή Β για το UI — δεν χρειάζεται καμία ενέργεια τώρα.\n" +
+  "4. Please confirm the staging environment is ready by next Monday.\n" +
+  "5. Η Άννα χρειάζεται να ενημερώσει τον πελάτη με ένα σύντομο status update μέχρι το τέλος της εβδομάδας.\n\n" +
+  "Ευχαριστούμε όλους για τη συμμετοχή.";
+
+function loadExample() {
+  document.getElementById("paste").value = EXAMPLE_MOM;
+  document.getElementById("msg").textContent = "Παράδειγμα φορτώθηκε — πάτα «Εξαγωγή asks».";
+}
+
+function esc(s) {
+  return (s || "").replace(/[&<>"]/g, function(c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+  });
+}
+
+// ---------- Ταυτότητα χρήστη (μία φορά ανά υπολογιστή, μέσω localStorage) ----------
+function ensureIdentity() {
+  if (!currentUser) {
+    const name = prompt("Το όνομά σου (θα το θυμάται αυτός ο browser):");
+    if (name && name.trim()) {
+      currentUser = name.trim();
+      localStorage.setItem("relay_user", currentUser);
+    }
+  }
+  renderWhoAmI();
+}
+
+function renderWhoAmI() {
+  const el = document.getElementById("whoami");
+  el.textContent = currentUser ? "👤 " + currentUser + " (αλλαγή)" : "👤 Ορισμός ονόματος";
+  el.onclick = changeIdentity;
+}
+
+function changeIdentity() {
+  const name = prompt("Νέο όνομα:", currentUser);
+  if (name && name.trim()) {
+    currentUser = name.trim();
+    localStorage.setItem("relay_user", currentUser);
+    renderWhoAmI();
+    load();
+  }
+}
+
+function isOwner(ask) {
+  if (!ask.created_by || ask.created_by.trim() === "") return true;
+  return ask.created_by.trim().toLowerCase() === currentUser.trim().toLowerCase();
+}
+
+// ---------- Projects ----------
+async function loadProjects() {
+  const res = await fetch("/api/projects");
+  const projects = await res.json();
+  const select = document.getElementById("projectSelect");
+
+  if (!projects.length) {
+    select.innerHTML = "<option value=''>(κανένα project ακόμα)</option>";
+    return;
+  }
+
+  if (!currentProject || !projects.find(function(p){ return p.id === currentProject; })) {
+    currentProject = projects[0].id;
+  }
+
+  select.innerHTML = projects
+    .map(function(p){
+      return '<option value="' + p.id + '" ' + (p.id === currentProject ? "selected" : "") + '>' + esc(p.name) + '</option>';
+    })
+    .join("");
+
+  localStorage.setItem("relay_project", currentProject);
+}
+
+async function createProject() {
+  const name = prompt("Όνομα νέου project:");
+  if (!name || !name.trim()) return;
+
+  const res = await fetch("/api/projects", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: name.trim() }),
+  });
+  const result = await res.json();
+  if (!res.ok) {
+    alert(result.error || "Αποτυχία δημιουργίας project");
+    return;
+  }
+
+  currentProject = result.id;
+  localStorage.setItem("relay_project", currentProject);
+  await loadProjects();
+  await load();
+}
+
+async function deleteCurrentProject() {
+  if (!currentProject) return;
+
+  const select = document.getElementById("projectSelect");
+  const projectName = select.options[select.selectedIndex]
+    ? select.options[select.selectedIndex].text
+    : "αυτό το project";
+
+  const confirmed = confirm(
+    "Θέλεις σίγουρα να διαγράψεις το project \"" + projectName + "\";\n\n" +
+    "Θα διαγραφούν ΟΛΑ τα asks μέσα του."
+  );
+  if (!confirmed) return;
+
+  const res = await fetch("/api/projects/" + currentProject, { method: "DELETE" });
+  const result = await res.json();
+  if (!res.ok) {
+    alert(result.error || "Η διαγραφή απέτυχε.");
+    return;
+  }
+
+  currentProject = "";
+  localStorage.removeItem("relay_project");
+  await loadProjects();
+  await load();
+}
+
+// ---------- Dashboard ----------
+async function loadDashboard() {
+  const dash = document.getElementById("dashboardView");
+  if (!currentProject) {
+    dash.innerHTML = "<p style='color:#5a6472'>Δημιούργησε πρώτα ένα project.</p>";
+    return;
+  }
+
+  const res = await fetch("/api/dashboard?project_id=" + currentProject);
+  const data = await res.json();
+  if (!res.ok) {
+    dash.innerHTML = "<p style='color:#5a6472'>" + esc(data.error || "Σφάλμα") + "</p>";
+    return;
+  }
+
+  const t = data.totals;
+  let html = '<div class="dash-toolbar">' +
+    '<button class="secondary" onclick="exportExcel()">📤 Export Excel</button>' +
+    '<button class="secondary" onclick="exportPPT()">📄 Export PPT</button>' +
+    '<button class="secondary" onclick="loadExecutiveSummary()">🤖 AI Executive Summary</button>' +
+  '</div>';
+
+  html += '<div id="aiSummaryBox"></div>';
+
+  html += '<div class="stat-grid">' +
+    '<div class="stat-card"><div class="stat-num">' + t.total + '</div><div class="stat-label">Σύνολο</div></div>' +
+    '<div class="stat-card"><div class="stat-num">' + (t.open || 0) + '</div><div class="stat-label">Open</div></div>' +
+    '<div class="stat-card st-accepted"><div class="stat-num">' + (t.accepted || 0) + '</div><div class="stat-label">Accepted</div></div>' +
+    '<div class="stat-card st-done"><div class="stat-num">' + (t.done || 0) + '</div><div class="stat-label">Done</div></div>' +
+    '<div class="stat-card st-overdue"><div class="stat-num">' + (t.overdue || 0) + '</div><div class="stat-label">Καθυστερημένα</div></div>' +
+  '</div>';
+
+  html += '<h3 style="margin-top:0">👤 Ανά Owner (ποιος τι χρωστάει)</h3>';
+  if (!data.by_owner.length) {
+    html += "<p style='color:#5a6472;font-size:13px'>Δεν υπάρχουν asks ακόμα.</p>";
+  } else {
+    html += '<table class="report"><tr><th>Owner</th><th>Σύνολο</th><th>Open</th><th>Accepted</th><th>Done</th><th>Καθυστερημένα</th></tr>';
+    data.by_owner.forEach(function(o) {
+      html += '<tr><td>' + esc(o.name) + '</td>' +
+        '<td class="num">' + o.total + '</td>' +
+        '<td class="num">' + (o.open || 0) + '</td>' +
+        '<td class="num">' + (o.accepted || 0) + '</td>' +
+        '<td class="num">' + (o.done || 0) + '</td>' +
+        '<td class="num" style="color:#b91c1c">' + (o.overdue || 0) + '</td></tr>';
+    });
+    html += '</table>';
+  }
+
+  html += '<h3>✍️ Ανά Δημιουργό (ποιος έφτιαξε τι)</h3>';
+  if (!data.by_creator.length) {
+    html += "<p style='color:#5a6472;font-size:13px'>Δεν υπάρχουν asks ακόμα.</p>";
+  } else {
+    html += '<table class="report"><tr><th>Δημιουργός</th><th>Asks που έφτιαξε</th></tr>';
+    data.by_creator.forEach(function(c) {
+      html += '<tr><td>' + esc(c.name) + '</td><td class="num">' + c.total + '</td></tr>';
+    });
+    html += '</table>';
+  }
+
+  html += '<div class="chart-grid">' +
+    '<div class="chart-card"><h4>Κατάσταση asks</h4><canvas id="statusChart"></canvas></div>' +
+    '<div class="chart-card"><h4>Asks ανά Owner</h4><canvas id="ownerChart"></canvas></div>' +
+  '</div>';
+
+  dash.innerHTML = html;
+
+  lastDashboardData = data;
+  renderDashboardCharts(data);
+}
+
+// ---------- Dashboard: charts ----------
+let lastDashboardData = null;
+let statusChartInstance = null;
+let ownerChartInstance = null;
+
+function renderDashboardCharts(data) {
+  const t = data.totals;
+
+  if (statusChartInstance) statusChartInstance.destroy();
+  const statusCtx = document.getElementById("statusChart");
+  if (statusCtx) {
+    statusChartInstance = new Chart(statusCtx, {
+      type: "doughnut",
+      data: {
+        labels: ["Open", "Accepted", "Done", "Καθυστερημένα"],
+        datasets: [{
+          data: [t.open || 0, t.accepted || 0, t.done || 0, t.overdue || 0],
+          backgroundColor: ["#a5b4fc", "#0ea5e9", "#166534", "#b91c1c"],
+        }],
+      },
+      options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } } } },
+    });
+  }
+
+  if (ownerChartInstance) ownerChartInstance.destroy();
+  const ownerCtx = document.getElementById("ownerChart");
+  if (ownerCtx) {
+    const owners = data.by_owner.slice(0, 8);
+    ownerChartInstance = new Chart(ownerCtx, {
+      type: "bar",
+      data: {
+        labels: owners.map(function(o){ return o.name; }),
+        datasets: [
+          { label: "Open", data: owners.map(function(o){ return o.open || 0; }), backgroundColor: "#a5b4fc" },
+          { label: "Accepted", data: owners.map(function(o){ return o.accepted || 0; }), backgroundColor: "#0ea5e9" },
+          { label: "Done", data: owners.map(function(o){ return o.done || 0; }), backgroundColor: "#166534" },
+        ],
+      },
+      options: {
+        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } },
+        plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } } },
+      },
+    });
+  }
+}
+
+// ---------- Dashboard: AI Executive Summary ----------
+async function loadExecutiveSummary() {
+  const box = document.getElementById("aiSummaryBox");
+  if (!box || !currentProject) return;
+  box.innerHTML = '<div class="ai-summary"><p class="loading">🤖 Δημιουργία executive summary...</p></div>';
+
+  try {
+    const res = await fetch("/api/dashboard/summary?project_id=" + currentProject);
+    const data = await res.json();
+    if (!res.ok) {
+      box.innerHTML = '<div class="ai-summary"><p class="loading">' + esc(data.error || "Σφάλμα") + '</p></div>';
+      return;
+    }
+    lastAiSummary = data;
+
+    let html = '<div class="ai-summary"><h4>🤖 Executive Summary</h4><p>' + esc(data.summary) + '</p>';
+    if (data.highlights && data.highlights.length) {
+      html += '<ul>' + data.highlights.map(function(h){ return '<li>' + esc(h) + '</li>'; }).join("") + '</ul>';
+    }
+    if (data.risks && data.risks.length) {
+      html += '<ul class="risks">' + data.risks.map(function(r){ return '<li>' + esc(r) + '</li>'; }).join("") + '</ul>';
+    }
+    html += '</div>';
+    box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = '<div class="ai-summary"><p class="loading">Αποτυχία δημιουργίας summary.</p></div>';
+  }
+}
+
+let lastAiSummary = null;
+
+// ---------- Dashboard: Export Excel ----------
+async function exportExcel() {
+  if (!lastDashboardData || !currentProject) { alert("Φόρτωσε πρώτα το Dashboard."); return; }
+
+  const projectName = document.getElementById("projectSelect").selectedOptions[0]
+    ? document.getElementById("projectSelect").selectedOptions[0].text : "project";
+
+  const asksRes = await fetch("/api/asks?project_id=" + currentProject);
+  const asks = await asksRes.json();
+
+  const wb = XLSX.utils.book_new();
+
+  const t = lastDashboardData.totals;
+  const summarySheet = XLSX.utils.aoa_to_sheet([
+    ["Relay — Dashboard Summary"],
+    ["Project", projectName],
+    ["Ημερομηνία", new Date().toISOString().slice(0, 10)],
+    [],
+    ["Metric", "Value"],
+    ["Σύνολο", t.total || 0],
+    ["Open", t.open || 0],
+    ["Accepted", t.accepted || 0],
+    ["Done", t.done || 0],
+    ["Καθυστερημένα", t.overdue || 0],
+  ]);
+  XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
+
+  const ownerRows = [["Owner", "Σύνολο", "Open", "Accepted", "Done", "Καθυστερημένα"]];
+  lastDashboardData.by_owner.forEach(function(o) {
+    ownerRows.push([o.name, o.total, o.open || 0, o.accepted || 0, o.done || 0, o.overdue || 0]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ownerRows), "By Owner");
+
+  const creatorRows = [["Δημιουργός", "Asks που έφτιαξε"]];
+  lastDashboardData.by_creator.forEach(function(c) { creatorRows.push([c.name, c.total]); });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(creatorRows), "By Creator");
+
+  const askRows = [["Title", "Owner", "Status", "Due date", "Overdue", "Created by", "Requested by"]];
+  asks.forEach(function(a) {
+    askRows.push([a.title, a.owner || "", a.status, a.due_date || "", a.is_overdue ? "Ναι" : "Όχι", a.created_by || "", a.requested_by || ""]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(askRows), "All Asks");
+
+  XLSX.writeFile(wb, "relay-" + slugifyClient(projectName) + "-dashboard.xlsx");
+}
+
+function slugifyClient(s) {
+  return (s || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "project";
+}
+
+// ---------- Dashboard: Export PPT ----------
+async function exportPPT() {
+  if (!lastDashboardData || !currentProject) { alert("Φόρτωσε πρώτα το Dashboard."); return; }
+
+  const projectName = document.getElementById("projectSelect").selectedOptions[0]
+    ? document.getElementById("projectSelect").selectedOptions[0].text : "project";
+  const t = lastDashboardData.totals;
+
+  if (!lastAiSummary) {
+    await loadExecutiveSummary();
+  }
+
+  const pptx = new PptxGenJS();
+  pptx.defineLayout({ name: "RELAY", width: 10, height: 5.63 });
+  pptx.layout = "RELAY";
+  const brand = "6D28D9";
+
+  // Title slide
+  let slide = pptx.addSlide();
+  slide.background = { color: "FAF9FF" };
+  slide.addText("Relay — Project Dashboard", { x: 0.5, y: 1.9, w: 9, h: 0.8, fontSize: 32, bold: true, color: brand });
+  slide.addText(projectName, { x: 0.5, y: 2.7, w: 9, h: 0.6, fontSize: 20, color: "111827" });
+  slide.addText(new Date().toISOString().slice(0, 10), { x: 0.5, y: 3.3, w: 9, h: 0.4, fontSize: 13, color: "5A6472" });
+
+  // Stats slide
+  slide = pptx.addSlide();
+  slide.addText("Σύνοψη", { x: 0.4, y: 0.3, fontSize: 22, bold: true, color: brand });
+  const stats = [
+    ["Σύνολο", t.total || 0], ["Open", t.open || 0], ["Accepted", t.accepted || 0],
+    ["Done", t.done || 0], ["Καθυστερημένα", t.overdue || 0],
+  ];
+  const cellW = 9 / stats.length;
+  stats.forEach(function(s, i) {
+    slide.addShape("roundRect", { x: 0.3 + i * cellW, y: 1.1, w: cellW - 0.15, h: 1.3, fill: { color: "FFFFFF" }, line: { color: "E5E7EB" }, rectRadius: 0.08 });
+    slide.addText(String(s[1]), { x: 0.3 + i * cellW, y: 1.25, w: cellW - 0.15, h: 0.6, align: "center", fontSize: 26, bold: true, color: "111827" });
+    slide.addText(s[0], { x: 0.3 + i * cellW, y: 1.85, w: cellW - 0.15, h: 0.4, align: "center", fontSize: 11, color: "5A6472" });
+  });
+
+  // Charts slide (captured as images from the live canvases)
+  const statusCanvas = document.getElementById("statusChart");
+  const ownerCanvas = document.getElementById("ownerChart");
+  if (statusCanvas && ownerCanvas) {
+    slide = pptx.addSlide();
+    slide.addText("Charts", { x: 0.4, y: 0.3, fontSize: 22, bold: true, color: brand });
+    slide.addImage({ data: statusCanvas.toDataURL("image/png"), x: 0.4, y: 1.0, w: 4.3, h: 3.4 });
+    slide.addImage({ data: ownerCanvas.toDataURL("image/png"), x: 5.0, y: 1.0, w: 4.3, h: 3.4 });
+  }
+
+  // By owner table slide
+  slide = pptx.addSlide();
+  slide.addText("Ανά Owner", { x: 0.4, y: 0.3, fontSize: 22, bold: true, color: brand });
+  const ownerTableRows = [
+    [{ text: "Owner", options: { bold: true, fill: { color: "F6F4FC" } } },
+     { text: "Σύνολο", options: { bold: true, fill: { color: "F6F4FC" } } },
+     { text: "Open", options: { bold: true, fill: { color: "F6F4FC" } } },
+     { text: "Accepted", options: { bold: true, fill: { color: "F6F4FC" } } },
+     { text: "Done", options: { bold: true, fill: { color: "F6F4FC" } } },
+     { text: "Καθυστ.", options: { bold: true, fill: { color: "F6F4FC" } } }],
+  ];
+  lastDashboardData.by_owner.slice(0, 10).forEach(function(o) {
+    ownerTableRows.push([String(o.name), String(o.total), String(o.open || 0), String(o.accepted || 0), String(o.done || 0), String(o.overdue || 0)]);
+  });
+  slide.addTable(ownerTableRows, { x: 0.4, y: 1.1, w: 9.2, fontSize: 11, border: { color: "E5E7EB" } });
+
+  // AI Executive Summary slide
+  if (lastAiSummary) {
+    slide = pptx.addSlide();
+    slide.addText("🤖 AI Executive Summary", { x: 0.4, y: 0.3, fontSize: 22, bold: true, color: brand });
+    slide.addText(lastAiSummary.summary || "", { x: 0.4, y: 1.0, w: 9.2, h: 1.0, fontSize: 14, color: "111827" });
+
+    let y = 2.1;
+    if (lastAiSummary.highlights && lastAiSummary.highlights.length) {
+      slide.addText("Highlights", { x: 0.4, y: y, fontSize: 13, bold: true, color: "5A6472" });
+      y += 0.35;
+      slide.addText(
+        lastAiSummary.highlights.map(function(h){ return { text: h, options: { bullet: true, breakLine: true } }; }),
+        { x: 0.5, y: y, w: 9, h: 1.3, fontSize: 12, color: "111827" }
+      );
+      y += 0.28 * lastAiSummary.highlights.length + 0.3;
+    }
+    if (lastAiSummary.risks && lastAiSummary.risks.length) {
+      slide.addText("Risks", { x: 0.4, y: y, fontSize: 13, bold: true, color: "B91C1C" });
+      y += 0.35;
+      slide.addText(
+        lastAiSummary.risks.map(function(r){ return { text: r, options: { bullet: true, breakLine: true } }; }),
+        { x: 0.5, y: y, w: 9, h: 1.0, fontSize: 12, color: "B91C1C" }
+      );
+    }
+  }
+
+  await pptx.writeFile({ fileName: "relay-" + slugifyClient(projectName) + "-dashboard.pptx" });
+}
+
+// ---------- Asks ----------
+async function load() {
+  const isDashboard = filter === "__dashboard__";
+  document.getElementById("dashboardView").style.display = isDashboard ? "block" : "none";
+  document.getElementById("list").style.display = isDashboard ? "none" : "block";
+  document.getElementById("createSection").style.display = isDashboard ? "none" : "block";
+
+  if (isDashboard) {
+    await loadDashboard();
+    return;
+  }
+
+  if (!currentProject) {
+    document.getElementById("list").innerHTML = "<p style='color:#5a6472'>Δημιούργησε πρώτα ένα project.</p>";
+    return;
+  }
+
+  const params = new URLSearchParams();
+  params.set("project_id", currentProject);
+  if (filter) params.set("status", filter);
+
+  const response = await fetch("/api/asks?" + params.toString());
+  const asks = await response.json();
+  const list = document.getElementById("list");
+
+  if (!asks.length) {
+    list.innerHTML = "<p style='color:#5a6472'>Κανένα ask.</p>";
+    return;
+  }
+
+  list.innerHTML = asks.map(function(ask) {
+    const canEdit = isOwner(ask);
+    const editDeleteButtons = canEdit
+      ? '<button class="edit-button" onclick=\'showEdit(' + JSON.stringify(ask) + ')\'>Edit</button>' +
+        '<button class="delete-button" onclick="deleteAsk(\'' + ask.id + '\')">Delete</button>'
+      : '<span class="locked-note">🔒 μόνο ο/η ' + esc(ask.created_by) + '</span>';
+
+    const overdueBadge = ask.is_overdue
+      ? '<span class="pill overduebadge">⚠️ Καθυστερημένο</span>'
+      : "";
+
+    const cardClass = ask.is_overdue ? "st-overdue" : "st-" + ask.status;
+
+    return (
+      '<div class="card ' + cardClass + '" id="card-' + ask.id + '">' +
+        '<div style="flex:1">' +
+          '<div class="title">' + esc(ask.title) + '</div>' +
+          '<div class="chips">' +
+            '<span class="chip">👤 <b>' + esc(ask.owner || "—") + '</b></span>' +
+            '<span class="chip">📅 <b>' + (ask.due_date || "—") + '</b></span>' +
+            (ask.created_by ? '<span class="chip">✍️ ' + esc(ask.created_by) + '</span>' : "") +
+          '</div>' +
+          (ask.source_quote ? '<div class="quote">“' + esc(ask.source_quote) + '”</div>' : "") +
+        '</div>' +
+        '<div style="text-align:right;min-width:150px">' +
+          '<span class="pill ' + ask.status + '">' + ask.status + '</span>' +
+          overdueBadge +
+          '<div class="actions">' +
+            '<button title="Ανάληψη ask" onclick="setStatus(\'' + ask.id + '\',\'accepted\')">Accept</button>' +
+            '<button title="Ολοκληρώθηκε" onclick="setStatus(\'' + ask.id + '\',\'done\')">Done</button>' +
+            editDeleteButtons +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }).join("");
+}
+
+async function setStatus(id, status) {
+  await fetch("/api/asks/" + id + "/status", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ status: status }),
+  });
+  load();
+}
+
+async function addAsk() {
+  const title = document.getElementById("t").value.trim();
+  if (!title) return;
+
+  await fetch("/api/asks", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      title: title,
+      owner: document.getElementById("o").value,
+      due_date: document.getElementById("d").value,
+      project_id: currentProject,
+      created_by: currentUser,
+    }),
+  });
+
+  document.getElementById("t").value = "";
+  document.getElementById("o").value = "";
+  document.getElementById("d").value = "";
+  load();
+}
+
+async function ingest() {
+  const body = document.getElementById("paste").value;
+
+  const r = await fetch("/api/ingest", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ project_id: currentProject, type: "note", body: body, created_by: currentUser }),
+  });
+  const j = await r.json();
+
+  if (!r.ok) {
+    document.getElementById("msg").textContent = j.error || "Κάτι πήγε στραβά.";
+    return;
+  }
+
+  document.getElementById("msg").textContent = "Βρέθηκαν " + j.extracted + " asks";
+  document.getElementById("paste").value = "";
+  load();
+}
+
+function showEdit(ask) {
+  const card = document.getElementById("card-" + ask.id);
+  card.innerHTML =
+    '<div class="edit-form">' +
+      '<div class="edit-grid">' +
+        '<input id="edit-title-' + ask.id + '" value="' + esc(ask.title) + '" placeholder="Τίτλος ask" />' +
+        '<input id="edit-owner-' + ask.id + '" value="' + esc(ask.owner || "") + '" placeholder="Owner" />' +
+        '<input id="edit-date-' + ask.id + '" type="date" value="' + (ask.due_date || "") + '" />' +
+        '<select id="edit-status-' + ask.id + '">' +
+          '<option value="open" ' + (ask.status === "open" ? "selected" : "") + '>Open</option>' +
+          '<option value="accepted" ' + (ask.status === "accepted" ? "selected" : "") + '>Accepted</option>' +
+          '<option value="done" ' + (ask.status === "done" ? "selected" : "") + '>Done</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="actions" style="justify-content:flex-start">' +
+        '<button onclick="saveEdit(\'' + ask.id + '\')">Save</button>' +
+        '<button class="cancel-button" onclick="load()">Cancel</button>' +
+      '</div>' +
+    '</div>';
+}
+
+async function saveEdit(id) {
+  const title = document.getElementById("edit-title-" + id).value.trim();
+  const owner = document.getElementById("edit-owner-" + id).value.trim();
+  const dueDate = document.getElementById("edit-date-" + id).value;
+  const status = document.getElementById("edit-status-" + id).value;
+
+  if (!title) {
+    alert("Ο τίτλος είναι υποχρεωτικός.");
+    return;
+  }
+
+  const response = await fetch("/api/asks/" + id, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ title: title, owner: owner, due_date: dueDate || null, status: status, requester: currentUser }),
+  });
+
+  const result = await response.json();
+  if (!response.ok) {
+    alert(result.error || "Η αποθήκευση απέτυχε.");
+    load();
+    return;
+  }
+  await load();
+}
+
+async function deleteAsk(id) {
+  const confirmed = confirm("Θέλεις σίγουρα να διαγράψεις αυτό το ask;");
+  if (!confirmed) return;
+
+  const response = await fetch("/api/asks/" + id, {
+    method: "DELETE",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ requester: currentUser }),
+  });
+
+  const result = await response.json();
+  if (!response.ok) {
+    alert(result.error || "Η διαγραφή απέτυχε.");
+    return;
+  }
+  await load();
+}
+
+document.getElementById("projectSelect").addEventListener("change", function(e) {
+  currentProject = e.target.value;
+  localStorage.setItem("relay_project", currentProject);
+  load();
+});
+
+document.querySelectorAll(".tabs button").forEach(function(b) {
+  b.onclick = function() {
+    document.querySelectorAll(".tabs button").forEach(function(x){ x.classList.remove("active"); });
+    b.classList.add("active");
+    filter = b.dataset.f;
+    document.getElementById("tabsLegend").style.display = (filter === "") ? "block" : "none";
+    load();
+  };
+});
+
+ensureIdentity();
+loadProjects().then(load);
+</script>
+</body>
+</html>
