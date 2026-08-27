@@ -223,7 +223,10 @@ async function checkSession() {
   const messageEl = document.getElementById("authMessage");
   messageEl.textContent = "Έλεγχος σύνδεσης...";
   try {
-    const response = await fetch("/api/auth/get-session");
+    const response = await fetch("/api/auth/get-session", {
+      credentials: "include",
+      cache: "no-store",
+    });
     if (!response.ok) throw new Error();
     const session = await response.json();
     if (session && session.user) {

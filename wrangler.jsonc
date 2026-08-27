@@ -6,6 +6,11 @@
   "compatibility_date": "2026-08-24",
   "compatibility_flags": ["nodejs_compat"],
 
+  "vars": {
+    "BETTER_AUTH_URL": "https://relay.nkourouklis.workers.dev",
+    "AUTH_EMAIL_FROM": "Relay <nkourouklis@ireneart.eu>"
+  },
+
   // Στατικό frontend (public/) σερβίρεται από τον ίδιο Worker
   "assets": {
     "directory": "./public",
