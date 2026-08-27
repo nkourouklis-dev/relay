@@ -90,6 +90,15 @@
   .ai-summary ul{margin:6px 0 0;padding-left:18px;font-size:13px;line-height:1.6}
   .ai-summary .risks li{color:var(--red)}
   .ai-summary .loading{color:var(--grey);font-size:13px}
+  .ai-insights{background:#fff;border:1px solid var(--line);border-left:4px solid var(--s);
+               border-radius:10px;padding:16px 18px;margin-bottom:22px}
+  .ai-insights h4{margin:0 0 12px;color:var(--blue);font-size:14px}
+  .insight-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
+  .insight h5{margin:0 0 4px;font-size:12px;color:var(--grey)}
+  .insight ul{margin:0;padding-left:17px;font-size:13px;line-height:1.5}
+  .insight li{margin-bottom:2px}
+  .insight-empty{color:var(--grey);font-size:13px}
+  .risk-summary{margin:0;font-size:14px;line-height:1.5}
   .auth-view{max-width:440px;margin:12vh auto 0;padding:28px;background:#fff;border:1px solid var(--line);border-radius:12px}
   .auth-view h1{margin:0 0 8px;font-size:24px;color:var(--v)}
   .auth-view p{color:var(--grey);font-size:14px;line-height:1.5}
@@ -378,6 +387,7 @@ async function loadDashboard() {
     '<button class="secondary" onclick="loadExecutiveSummary(\'week\')">📅 Weekly summary</button>' +
   '</div>';
 
+  html += '<div id="aiInsightsBox"><div class="ai-insights"><p class="loading">🤖 Φόρτωση AI insights...</p></div></div>';
   html += '<div id="aiSummaryBox"></div>';
 
   html += '<div class="stat-grid">' +
@@ -424,6 +434,7 @@ async function loadDashboard() {
 
   lastDashboardData = data;
   renderDashboardCharts(data);
+  loadAIInsights();
 }
 
 // ---------- Dashboard: charts ----------
@@ -502,6 +513,35 @@ async function loadExecutiveSummary(range) {
 }
 
 let lastAiSummary = null;
+
+async function loadAIInsights() {
+  const box = document.getElementById("aiInsightsBox");
+  if (!box || !currentProject) return;
+
+  try {
+    const res = await fetch("/api/dashboard/insights?project_id=" + encodeURIComponent(currentProject));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Σφάλμα");
+
+    const renderItems = function(items) {
+      return items.length
+        ? "<ul>" + items.map(function(item) {
+            const detail = [item.owner, item.due_date].filter(Boolean).join(" · ");
+            return "<li>" + esc(item.title) + (detail ? " <span class='chip'>" + esc(detail) + "</span>" : "") + "</li>";
+          }).join("") + "</ul>"
+        : "<p class='insight-empty'>Κανένα</p>";
+    };
+
+    box.innerHTML = '<div class="ai-insights"><h4>🤖 AI Insights</h4>' +
+      '<div class="insight-grid">' +
+        '<div class="insight"><h5>Καθυστερημένα (' + data.counts.overdue + ')</h5>' + renderItems(data.overdue) + '</div>' +
+        '<div class="insight"><h5>Blocked (' + data.counts.blocked + ')</h5>' + renderItems(data.blocked) + '</div>' +
+        '<div class="insight"><h5>Unassigned (' + data.counts.unassigned + ')</h5>' + renderItems(data.unassigned) + '</div>' +
+      '</div><p class="risk-summary"><b>Project risk:</b> ' + esc(data.risk_summary) + '</p></div>';
+  } catch (e) {
+    box.innerHTML = '<div class="ai-insights"><p class="loading">Αποτυχία φόρτωσης AI insights.</p></div>';
+  }
+}
 
 // ---------- Dashboard: Export Excel ----------
 async function exportExcel() {
