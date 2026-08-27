@@ -112,17 +112,25 @@ function getWeeklySummaryWindow(todayStr) {
   };
 }
 
+function normalizeForTriggerMatching(value) {
+  return String(value || "")
+    .toLocaleLowerCase("el-GR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 function naiveExtract(text) {
   if (!text) return [];
   const lines = text.split(/\n|\.|;/).map((l) => l.trim()).filter(Boolean);
   const triggers = [
     "please", "can you", "could you", "need to", "must", "todo", "to-do",
     "action", "deadline", "by ", "send", "confirm", "review", "prepare",
-    "παρακαλ", "να στείλ", "χρειάζ", "πρέπει", "μέχρι", "επιβεβαίω", "ετοίμασ",
-  ];
+    "παρακαλ", "να στείλ", "να στειλ", "στείλε", "στειλε", "χρειάζ", "χρειαζ", "πρέπει", "πρεπει",
+    "μέχρι", "μεχρι", "επιβεβαίω", "επιβεβαιω", "επιβεβαίωσε", "επιβεβαιωσε", "ετοίμασ", "ετοιμασ",
+  ].map(normalizeForTriggerMatching);
   const found = [];
   for (const line of lines) {
-    const low = line.toLowerCase();
+    const low = normalizeForTriggerMatching(line);
     if (triggers.some((t) => low.includes(t)) && line.length > 8 && line.length < 200) {
       const dm = line.match(/\b(\d{4}-\d{2}-\d{2})\b/);
       found.push({ title: line.slice(0, 140), owner: "", due_date: dm ? dm[1] : "", quote: line });
