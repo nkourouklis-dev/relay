@@ -17,14 +17,38 @@ function createAuth(env) {
   return betterAuth({
     secret,
     database: env.DB,
+    baseURL: env.BETTER_AUTH_URL || undefined,
     user: { modelName: "relay_users" },
     session: { modelName: "relay_sessions" },
     account: { modelName: "relay_accounts" },
     verification: { modelName: "relay_verifications" },
     plugins: [
       magicLink({
-        sendMagicLink: async () => {
-          throw new Error("Magic-link delivery is not configured for this environment.");
+        rateLimit: { window: 60, max: 5 },
+        sendMagicLink: async ({ email, url }) => {
+          if (!env.RESEND_API_KEY) return;
+          if (!env.AUTH_EMAIL_FROM || !env.BETTER_AUTH_URL) {
+            throw new Error("Magic-link email delivery is not configured.");
+          }
+
+          const response = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${env.RESEND_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: env.AUTH_EMAIL_FROM,
+              to: [email],
+              subject: "Your Relay sign-in link",
+              text: `Sign in to Relay with this link:\n\n${url}\n\nThis link expires in 5 minutes and can be used once.`,
+              html: `<p>Sign in to Relay with the link below.</p><p><a href="${url}">Sign in to Relay</a></p><p>This link expires in 5 minutes and can be used once.</p>`,
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error("Magic-link email delivery failed.");
+          }
         },
       }),
     ],

@@ -50,6 +50,8 @@ npm run deploy
 - Επί του παρόντος δεν προστίθενται route guards, login UI, owner claim flow, ή οποιαδήποτε αλλαγή στα `asks.owner_user_id` / `asks.owner`.
 - Το magic-link delivery σπάει κλειστά με σαφή, μη ευαίσθητο σφάλμα εάν δεν έχει ρυθμιστεί provider στο περιβάλλον.
 
+Για local δοκιμές, το `BETTER_AUTH_SECRET` μπορεί να δοθεί μέσω `wrangler dev --var`. Χωρίς `RESEND_API_KEY` το magic-link request χρησιμοποιεί mock transport και δεν εμφανίζει ή καταγράφει το link. Για πραγματική αποστολή απαιτούνται τα secrets `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, `AUTH_EMAIL_FROM` και η μεταβλητή `BETTER_AUTH_URL`.
+
 ## Επόμενα (όταν θες)
 - Ενεργοποίησε **Workers AI** (ξεκλείδωσε το `ai` binding στο wrangler.jsonc) και
   άλλαξε `naiveExtract` -> `extractWithAI` στο `src/index.js` για σωστή εξαγωγή.
