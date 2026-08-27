@@ -106,6 +106,7 @@ CREATE TABLE asks (
   status        TEXT DEFAULT 'open',   -- open | accepted | done | overdue
   confidence    REAL DEFAULT 1.0,
   source_quote  TEXT,                  -- το ακριβές απόσπασμα (trust)
+  created_by    TEXT DEFAULT '',
   created_at    TEXT DEFAULT (datetime('now'))
 );
 

@@ -72,6 +72,20 @@ function canModify(existingCreatedBy, requester) {
   return norm(existingCreatedBy) === norm(requester);
 }
 
+async function getSession(env, request) {
+  try {
+    return await createAuth(env).api.getSession({ headers: request.headers });
+  } catch {
+    return null;
+  }
+}
+
+async function requireSession(env, request) {
+  const session = await getSession(env, request);
+  if (!session) return json({ error: "Authentication required" }, 401);
+  return session;
+}
+
 function slugify(name) {
   const base = (name || "project")
     .toLowerCase()
@@ -423,6 +437,20 @@ export default {
     }
 
     if (path.startsWith("/api/")) {
+      const protectedRoute =
+        path === "/api/projects" ||
+        path.startsWith("/api/projects/") ||
+        path === "/api/asks" ||
+        path.startsWith("/api/asks/") ||
+        path === "/api/dashboard" ||
+        path === "/api/dashboard/summary";
+      let session = null;
+      if (protectedRoute) {
+        session = await requireSession(env, request);
+        if (session instanceof Response) return session;
+      }
+      const sessionEmail = session?.user?.email || "";
+
       // --- Projects: λίστα ---
       if (path === "/api/projects" && request.method === "GET") {
         const { results } = await env.DB.prepare(
@@ -520,7 +548,7 @@ export default {
            VALUES (?, ?, ?, ?, ?, ?, ?)`
         ).bind(
           id, projectId, b.title, b.owner || "", b.requested_by || "",
-          b.created_by || "", b.due_date || null
+          sessionEmail, b.due_date || null
         ).run();
         return json({ id, ok: true });
       }
@@ -546,7 +574,7 @@ export default {
         const owner = String(body.owner || "").trim();
         const dueDate = body.due_date || null;
         const status = String(body.status || "open");
-        const requester = String(body.requester || "");
+        const requester = sessionEmail;
         const allowedStatuses = ["open", "accepted", "done"];
 
         if (!title) return json({ error: "Το title είναι υποχρεωτικό" }, 400);
@@ -574,13 +602,7 @@ export default {
       // --- Διαγραφή (delete) ask ---
       if (path.match(/^\/api\/asks\/[^/]+$/) && request.method === "DELETE") {
         const askId = path.split("/")[3];
-        let requester = "";
-        try {
-          const body = await request.json();
-          requester = String(body.requester || "");
-        } catch {
-          /* no body */
-        }
+        const requester = sessionEmail;
 
         const existing = await env.DB.prepare(
           "SELECT id, created_by FROM asks WHERE id = ?"
