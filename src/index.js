@@ -3,6 +3,33 @@
 // + computed overdue badge + Dashboard (reporting) endpoint
 
 import PostalMime from "postal-mime";
+import { betterAuth } from "better-auth";
+import { magicLink } from "better-auth/plugins";
+
+function createAuth(env) {
+  const secret = env.BETTER_AUTH_SECRET;
+  if (!secret) {
+    throw new Error(
+      "Auth is not configured for this environment yet. Set BETTER_AUTH_SECRET in Cloudflare Secrets before enabling magic-link auth."
+    );
+  }
+
+  return betterAuth({
+    secret,
+    database: env.DB,
+    user: { modelName: "relay_users" },
+    session: { modelName: "relay_sessions" },
+    account: { modelName: "relay_accounts" },
+    verification: { modelName: "relay_verifications" },
+    plugins: [
+      magicLink({
+        sendMagicLink: async () => {
+          throw new Error("Magic-link delivery is not configured for this environment.");
+        },
+      }),
+    ],
+  });
+}
 
 // ---------- helpers ----------
 const uid = () => crypto.randomUUID();
@@ -363,6 +390,13 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     const todayStr = new Date().toISOString().slice(0, 10);
+
+    if (path === "/api/auth" || path.startsWith("/api/auth/")) {
+      if (!env.BETTER_AUTH_SECRET) {
+        return json({ error: "Authentication is not configured" }, 503);
+      }
+      return createAuth(env).handler(request);
+    }
 
     if (path.startsWith("/api/")) {
       // --- Projects: λίστα ---
