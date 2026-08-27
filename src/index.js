@@ -3,6 +3,57 @@
 // + computed overdue badge + Dashboard (reporting) endpoint
 
 import PostalMime from "postal-mime";
+import { betterAuth } from "better-auth";
+import { magicLink } from "better-auth/plugins";
+
+function createAuth(env) {
+  const secret = env.BETTER_AUTH_SECRET;
+  if (!secret) {
+    throw new Error(
+      "Auth is not configured for this environment yet. Set BETTER_AUTH_SECRET in Cloudflare Secrets before enabling magic-link auth."
+    );
+  }
+
+  return betterAuth({
+    secret,
+    database: env.DB,
+    baseURL: env.BETTER_AUTH_URL || undefined,
+    user: { modelName: "relay_users" },
+    session: { modelName: "relay_sessions" },
+    account: { modelName: "relay_accounts" },
+    verification: { modelName: "relay_verifications" },
+    plugins: [
+      magicLink({
+        rateLimit: { window: 60, max: 5 },
+        sendMagicLink: async ({ email, url }) => {
+          if (!env.RESEND_API_KEY) return;
+          if (!env.AUTH_EMAIL_FROM || !env.BETTER_AUTH_URL) {
+            throw new Error("Magic-link email delivery is not configured.");
+          }
+
+          const response = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${env.RESEND_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: env.AUTH_EMAIL_FROM,
+              to: [email],
+              subject: "Your Relay sign-in link",
+              text: `Sign in to Relay with this link:\n\n${url}\n\nThis link expires in 5 minutes and can be used once.`,
+              html: `<p>Sign in to Relay with the link below.</p><p><a href="${url}">Sign in to Relay</a></p><p>This link expires in 5 minutes and can be used once.</p>`,
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error("Magic-link email delivery failed.");
+          }
+        },
+      }),
+    ],
+  });
+}
 
 // ---------- helpers ----------
 const uid = () => crypto.randomUUID();
@@ -21,6 +72,20 @@ function canModify(existingCreatedBy, requester) {
   return norm(existingCreatedBy) === norm(requester);
 }
 
+async function getSession(env, request) {
+  try {
+    return await createAuth(env).api.getSession({ headers: request.headers });
+  } catch {
+    return null;
+  }
+}
+
+async function requireSession(env, request) {
+  const session = await getSession(env, request);
+  if (!session) return json({ error: "Authentication required" }, 401);
+  return session;
+}
+
 function slugify(name) {
   const base = (name || "project")
     .toLowerCase()
@@ -35,6 +100,16 @@ function withComputedOverdue(rows, todayStr) {
     const isOverdue = !!(r.due_date && r.due_date < todayStr && status !== "done");
     return { ...r, status, is_overdue: isOverdue };
   });
+}
+
+function getWeeklySummaryWindow(todayStr) {
+  const end = new Date(`${todayStr}T00:00:00Z`);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - 6);
+  return {
+    start: start.toISOString().slice(0, 10) + " 00:00:00",
+    end: todayStr + " 23:59:59",
+  };
 }
 
 function naiveExtract(text) {
@@ -364,7 +439,28 @@ export default {
     const path = url.pathname;
     const todayStr = new Date().toISOString().slice(0, 10);
 
+    if (path === "/api/auth" || path.startsWith("/api/auth/")) {
+      if (!env.BETTER_AUTH_SECRET) {
+        return json({ error: "Authentication is not configured" }, 503);
+      }
+      return createAuth(env).handler(request);
+    }
+
     if (path.startsWith("/api/")) {
+      const protectedRoute =
+        path === "/api/projects" ||
+        path.startsWith("/api/projects/") ||
+        path === "/api/asks" ||
+        path.startsWith("/api/asks/") ||
+        path === "/api/dashboard" ||
+        path === "/api/dashboard/summary";
+      let session = null;
+      if (protectedRoute) {
+        session = await requireSession(env, request);
+        if (session instanceof Response) return session;
+      }
+      const sessionEmail = session?.user?.email || "";
+
       // --- Projects: λίστα ---
       if (path === "/api/projects" && request.method === "GET") {
         const { results } = await env.DB.prepare(
@@ -415,14 +511,22 @@ export default {
         const project = await getProjectById(env, projectId);
         if (!project) return json({ error: "Project not found" }, 404);
 
-        const { results } = await env.DB.prepare(
-          "SELECT * FROM asks WHERE project_id = ?"
-        ).bind(projectId).all();
+        const weekly = url.searchParams.get("range") === "week";
+        let query = "SELECT * FROM asks WHERE project_id = ?";
+        let binds = [projectId];
+        let window = null;
+        if (weekly) {
+          window = getWeeklySummaryWindow(todayStr);
+          query += " AND (created_at BETWEEN ? AND ? OR (due_date < ? AND status != 'done'))";
+          binds = [projectId, window.start, window.end, todayStr];
+        }
+
+        const { results } = await env.DB.prepare(query).bind(...binds).all();
 
         const asksComputed = withComputedOverdue(results || [], todayStr);
         const dashboard = buildDashboard(results || [], todayStr);
         const summary = await buildExecutiveSummary(env, project, dashboard, asksComputed, todayStr);
-        return json(summary);
+        return json(weekly ? { ...summary, range: "week", from: window.start.slice(0, 10), to: todayStr } : summary);
       }
 
       // --- Asks: λίστα ---
@@ -462,7 +566,7 @@ export default {
            VALUES (?, ?, ?, ?, ?, ?, ?)`
         ).bind(
           id, projectId, b.title, b.owner || "", b.requested_by || "",
-          b.created_by || "", b.due_date || null
+          sessionEmail, b.due_date || null
         ).run();
         return json({ id, ok: true });
       }
@@ -488,7 +592,7 @@ export default {
         const owner = String(body.owner || "").trim();
         const dueDate = body.due_date || null;
         const status = String(body.status || "open");
-        const requester = String(body.requester || "");
+        const requester = sessionEmail;
         const allowedStatuses = ["open", "accepted", "done"];
 
         if (!title) return json({ error: "Το title είναι υποχρεωτικό" }, 400);
@@ -516,13 +620,7 @@ export default {
       // --- Διαγραφή (delete) ask ---
       if (path.match(/^\/api\/asks\/[^/]+$/) && request.method === "DELETE") {
         const askId = path.split("/")[3];
-        let requester = "";
-        try {
-          const body = await request.json();
-          requester = String(body.requester || "");
-        } catch {
-          /* no body */
-        }
+        const requester = sessionEmail;
 
         const existing = await env.DB.prepare(
           "SELECT id, created_by FROM asks WHERE id = ?"

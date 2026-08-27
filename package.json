@@ -10,6 +10,7 @@
     "db:remote": "wrangler d1 execute relay-db --file=./schema.sql --remote"
   },
   "dependencies": {
+    "better-auth": "^1.7.1",
     "postal-mime": "^2.4.0"
   },
   "devDependencies": {

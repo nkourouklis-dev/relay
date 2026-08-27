@@ -90,6 +90,14 @@
   .ai-summary ul{margin:6px 0 0;padding-left:18px;font-size:13px;line-height:1.6}
   .ai-summary .risks li{color:var(--red)}
   .ai-summary .loading{color:var(--grey);font-size:13px}
+  .auth-view{max-width:440px;margin:12vh auto 0;padding:28px;background:#fff;border:1px solid var(--line);border-radius:12px}
+  .auth-view h1{margin:0 0 8px;font-size:24px;color:var(--v)}
+  .auth-view p{color:var(--grey);font-size:14px;line-height:1.5}
+  .auth-view form{display:flex;gap:8px;margin-top:20px}
+  .auth-view input{flex:1;min-width:0}
+  .auth-message{margin:14px 0 0;color:var(--grey);font-size:13px}
+  .auth-error{color:var(--red)}
+  .auth-success{color:var(--green)}
   @media (max-width:720px){
     .chart-grid{grid-template-columns:1fr}
   }
@@ -102,9 +110,19 @@
 <header>
   <b>Relay</b><span class="tagline">Projects that run themselves</span>
   <div class="spacer"></div>
-  <span id="whoami" title="Πάτα για αλλαγή ονόματος"></span>
+  <span id="whoami"></span>
+  <button id="logoutButton" class="secondary" type="button" style="display:none">Έξοδος</button>
 </header>
-<main>
+<main id="authView" class="auth-view" hidden>
+  <h1>Σύνδεση στο Relay</h1>
+  <p id="authIntro">Βάλε το email σου και θα σου στείλουμε ένα ασφαλές link σύνδεσης.</p>
+  <form id="loginForm">
+    <input id="loginEmail" type="email" autocomplete="email" placeholder="you@example.com" required />
+    <button id="loginButton" type="submit">Στείλε link</button>
+  </form>
+  <p id="authMessage" class="auth-message" role="status"></p>
+</main>
+<main id="app" hidden>
   <div class="row">
     <label style="font-size:13px;color:var(--grey)">Project:</label>
     <select id="projectSelect"></select>
@@ -149,7 +167,7 @@
 
 <script>
 let filter = "";
-let currentUser = localStorage.getItem("relay_user") || "";
+let currentUser = "";
 let currentProject = localStorage.getItem("relay_project") || "";
 
 const EXAMPLE_MOM =
@@ -174,31 +192,86 @@ function esc(s) {
   });
 }
 
-// ---------- Ταυτότητα χρήστη (μία φορά ανά υπολογιστή, μέσω localStorage) ----------
-function ensureIdentity() {
-  if (!currentUser) {
-    const name = prompt("Το όνομά σου (θα το θυμάται αυτός ο browser):");
-    if (name && name.trim()) {
-      currentUser = name.trim();
-      localStorage.setItem("relay_user", currentUser);
-    }
-  }
-  renderWhoAmI();
-}
-
 function renderWhoAmI() {
   const el = document.getElementById("whoami");
-  el.textContent = currentUser ? "👤 " + currentUser + " (αλλαγή)" : "👤 Ορισμός ονόματος";
-  el.onclick = changeIdentity;
+  el.textContent = currentUser ? "👤 " + currentUser : "";
+  document.getElementById("logoutButton").style.display = currentUser ? "block" : "none";
 }
 
-function changeIdentity() {
-  const name = prompt("Νέο όνομα:", currentUser);
-  if (name && name.trim()) {
-    currentUser = name.trim();
-    localStorage.setItem("relay_user", currentUser);
-    renderWhoAmI();
-    load();
+function showLogin(message, className) {
+  currentUser = "";
+  document.getElementById("authView").hidden = false;
+  document.getElementById("app").hidden = true;
+  renderWhoAmI();
+  const messageEl = document.getElementById("authMessage");
+  messageEl.textContent = message || "";
+  messageEl.className = "auth-message" + (className ? " " + className : "");
+  document.getElementById("loginForm").hidden = false;
+  document.getElementById("loginButton").disabled = false;
+  document.getElementById("loginButton").textContent = "Στείλε link";
+}
+
+function showApp(session) {
+  currentUser = session.user.email;
+  document.getElementById("authView").hidden = true;
+  document.getElementById("app").hidden = false;
+  renderWhoAmI();
+  loadProjects().then(load);
+}
+
+async function checkSession() {
+  const messageEl = document.getElementById("authMessage");
+  messageEl.textContent = "Έλεγχος σύνδεσης...";
+  try {
+    const response = await fetch("/api/auth/get-session");
+    if (!response.ok) throw new Error();
+    const session = await response.json();
+    if (session && session.user) {
+      showApp(session);
+    } else {
+      showLogin();
+    }
+  } catch {
+    showLogin("Δεν ήταν δυνατός ο έλεγχος σύνδεσης. Δοκίμασε ξανά.", "auth-error");
+  }
+}
+
+async function requestMagicLink(event) {
+  event.preventDefault();
+  const email = document.getElementById("loginEmail").value.trim();
+  if (!email) return;
+
+  const button = document.getElementById("loginButton");
+  const messageEl = document.getElementById("authMessage");
+  button.disabled = true;
+  button.textContent = "Αποστολή...";
+  messageEl.className = "auth-message";
+  messageEl.textContent = "";
+
+  try {
+    const response = await fetch("/api/auth/sign-in/magic-link", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: email, callbackURL: "/" }),
+    });
+    if (!response.ok) throw new Error();
+    document.getElementById("loginForm").hidden = true;
+    document.getElementById("authIntro").textContent = "Αν υπάρχει λογαριασμός για αυτό το email, θα λάβεις σύνδεσμο στα εισερχόμενά σου.";
+    messageEl.className = "auth-message auth-success";
+    messageEl.textContent = "Έλεγξε τα εισερχόμενά σου για το link σύνδεσης.";
+  } catch {
+    button.disabled = false;
+    button.textContent = "Στείλε link";
+    messageEl.className = "auth-message auth-error";
+    messageEl.textContent = "Δεν ήταν δυνατή η αποστολή. Δοκίμασε ξανά αργότερα.";
+  }
+}
+
+async function logout() {
+  try {
+    await fetch("/api/auth/sign-out", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  } finally {
+    showLogin("Αποσυνδέθηκες.", "auth-success");
   }
 }
 
@@ -299,6 +372,7 @@ async function loadDashboard() {
     '<button class="secondary" onclick="exportExcel()">📤 Export Excel</button>' +
     '<button class="secondary" onclick="exportPPT()">📄 Export PPT</button>' +
     '<button class="secondary" onclick="loadExecutiveSummary()">🤖 AI Executive Summary</button>' +
+    '<button class="secondary" onclick="loadExecutiveSummary(\'week\')">📅 Weekly summary</button>' +
   '</div>';
 
   html += '<div id="aiSummaryBox"></div>';
@@ -396,13 +470,13 @@ function renderDashboardCharts(data) {
 }
 
 // ---------- Dashboard: AI Executive Summary ----------
-async function loadExecutiveSummary() {
+async function loadExecutiveSummary(range) {
   const box = document.getElementById("aiSummaryBox");
   if (!box || !currentProject) return;
-  box.innerHTML = '<div class="ai-summary"><p class="loading">🤖 Δημιουργία executive summary...</p></div>';
+  box.innerHTML = '<div class="ai-summary"><p class="loading">🤖 Δημιουργία ' + (range === "week" ? "weekly summary" : "executive summary") + '...</p></div>';
 
   try {
-    const res = await fetch("/api/dashboard/summary?project_id=" + currentProject);
+    const res = await fetch("/api/dashboard/summary?project_id=" + currentProject + (range === "week" ? "&range=week" : ""));
     const data = await res.json();
     if (!res.ok) {
       box.innerHTML = '<div class="ai-summary"><p class="loading">' + esc(data.error || "Σφάλμα") + '</p></div>';
@@ -410,7 +484,7 @@ async function loadExecutiveSummary() {
     }
     lastAiSummary = data;
 
-    let html = '<div class="ai-summary"><h4>🤖 Executive Summary</h4><p>' + esc(data.summary) + '</p>';
+    let html = '<div class="ai-summary"><h4>🤖 ' + (range === "week" ? "Weekly summary" : "Executive Summary") + '</h4><p>' + esc(data.summary) + '</p>';
     if (data.highlights && data.highlights.length) {
       html += '<ul>' + data.highlights.map(function(h){ return '<li>' + esc(h) + '</li>'; }).join("") + '</ul>';
     }
@@ -753,6 +827,9 @@ async function deleteAsk(id) {
   await load();
 }
 
+document.getElementById("loginForm").addEventListener("submit", requestMagicLink);
+document.getElementById("logoutButton").addEventListener("click", logout);
+
 document.getElementById("projectSelect").addEventListener("change", function(e) {
   currentProject = e.target.value;
   localStorage.setItem("relay_project", currentProject);
@@ -769,8 +846,7 @@ document.querySelectorAll(".tabs button").forEach(function(b) {
   };
 });
 
-ensureIdentity();
-loadProjects().then(load);
+checkSession();
 </script>
 </body>
 </html>

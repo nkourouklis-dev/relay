@@ -18,6 +18,60 @@ CREATE TABLE users (
   created_at  TEXT DEFAULT (datetime('now'))
 );
 
+-- Better Auth 1.7.1 core tables. Dates are ISO-8601 strings, as stored by
+-- the D1/Kysely adapter. See migrate_add_better_auth_core.sql for the source.
+CREATE TABLE relay_users (
+  id            TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  email         TEXT NOT NULL UNIQUE,
+  emailVerified INTEGER NOT NULL DEFAULT 0,
+  image         TEXT,
+  createdAt     TEXT NOT NULL,
+  updatedAt     TEXT NOT NULL
+);
+
+CREATE TABLE relay_sessions (
+  id        TEXT PRIMARY KEY,
+  expiresAt TEXT NOT NULL,
+  token     TEXT NOT NULL UNIQUE,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  ipAddress TEXT,
+  userAgent TEXT,
+  userId    TEXT NOT NULL REFERENCES relay_users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE relay_accounts (
+  id                    TEXT PRIMARY KEY,
+  issuer                TEXT NOT NULL,
+  accountId             TEXT NOT NULL,
+  providerId            TEXT NOT NULL,
+  userId                TEXT NOT NULL REFERENCES relay_users(id) ON DELETE CASCADE,
+  accessToken           TEXT,
+  refreshToken          TEXT,
+  idToken               TEXT,
+  accessTokenExpiresAt  TEXT,
+  refreshTokenExpiresAt TEXT,
+  scope                 TEXT,
+  password              TEXT,
+  createdAt             TEXT NOT NULL,
+  updatedAt             TEXT NOT NULL,
+  UNIQUE (issuer, accountId)
+);
+
+CREATE TABLE relay_verifications (
+  id         TEXT PRIMARY KEY,
+  identifier TEXT NOT NULL,
+  value      TEXT NOT NULL,
+  expiresAt  TEXT NOT NULL,
+  createdAt  TEXT NOT NULL,
+  updatedAt  TEXT NOT NULL
+);
+
+CREATE INDEX relay_sessions_userId_idx ON relay_sessions(userId);
+CREATE INDEX relay_accounts_userId_idx ON relay_accounts(userId);
+CREATE INDEX relay_verifications_identifier_idx ON relay_verifications(identifier);
+
 -- Έργα (outcomes rollup)
 CREATE TABLE projects (
   id           TEXT PRIMARY KEY,
@@ -52,6 +106,7 @@ CREATE TABLE asks (
   status        TEXT DEFAULT 'open',   -- open | accepted | done | overdue
   confidence    REAL DEFAULT 1.0,
   source_quote  TEXT,                  -- το ακριβές απόσπασμα (trust)
+  created_by    TEXT DEFAULT '',
   created_at    TEXT DEFAULT (datetime('now'))
 );
 
