@@ -372,6 +372,7 @@ async function loadDashboard() {
     '<button class="secondary" onclick="exportExcel()">📤 Export Excel</button>' +
     '<button class="secondary" onclick="exportPPT()">📄 Export PPT</button>' +
     '<button class="secondary" onclick="loadExecutiveSummary()">🤖 AI Executive Summary</button>' +
+    '<button class="secondary" onclick="loadExecutiveSummary(\'week\')">📅 Weekly summary</button>' +
   '</div>';
 
   html += '<div id="aiSummaryBox"></div>';
@@ -469,13 +470,13 @@ function renderDashboardCharts(data) {
 }
 
 // ---------- Dashboard: AI Executive Summary ----------
-async function loadExecutiveSummary() {
+async function loadExecutiveSummary(range) {
   const box = document.getElementById("aiSummaryBox");
   if (!box || !currentProject) return;
-  box.innerHTML = '<div class="ai-summary"><p class="loading">🤖 Δημιουργία executive summary...</p></div>';
+  box.innerHTML = '<div class="ai-summary"><p class="loading">🤖 Δημιουργία ' + (range === "week" ? "weekly summary" : "executive summary") + '...</p></div>';
 
   try {
-    const res = await fetch("/api/dashboard/summary?project_id=" + currentProject);
+    const res = await fetch("/api/dashboard/summary?project_id=" + currentProject + (range === "week" ? "&range=week" : ""));
     const data = await res.json();
     if (!res.ok) {
       box.innerHTML = '<div class="ai-summary"><p class="loading">' + esc(data.error || "Σφάλμα") + '</p></div>';
@@ -483,7 +484,7 @@ async function loadExecutiveSummary() {
     }
     lastAiSummary = data;
 
-    let html = '<div class="ai-summary"><h4>🤖 Executive Summary</h4><p>' + esc(data.summary) + '</p>';
+    let html = '<div class="ai-summary"><h4>🤖 ' + (range === "week" ? "Weekly summary" : "Executive Summary") + '</h4><p>' + esc(data.summary) + '</p>';
     if (data.highlights && data.highlights.length) {
       html += '<ul>' + data.highlights.map(function(h){ return '<li>' + esc(h) + '</li>'; }).join("") + '</ul>';
     }

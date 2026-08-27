@@ -102,6 +102,16 @@ function withComputedOverdue(rows, todayStr) {
   });
 }
 
+function getWeeklySummaryWindow(todayStr) {
+  const end = new Date(`${todayStr}T00:00:00Z`);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - 6);
+  return {
+    start: start.toISOString().slice(0, 10) + " 00:00:00",
+    end: todayStr + " 23:59:59",
+  };
+}
+
 function naiveExtract(text) {
   if (!text) return [];
   const lines = text.split(/\n|\.|;/).map((l) => l.trim()).filter(Boolean);
@@ -501,14 +511,22 @@ export default {
         const project = await getProjectById(env, projectId);
         if (!project) return json({ error: "Project not found" }, 404);
 
-        const { results } = await env.DB.prepare(
-          "SELECT * FROM asks WHERE project_id = ?"
-        ).bind(projectId).all();
+        const weekly = url.searchParams.get("range") === "week";
+        let query = "SELECT * FROM asks WHERE project_id = ?";
+        let binds = [projectId];
+        let window = null;
+        if (weekly) {
+          window = getWeeklySummaryWindow(todayStr);
+          query += " AND (created_at BETWEEN ? AND ? OR (due_date < ? AND status != 'done'))";
+          binds = [projectId, window.start, window.end, todayStr];
+        }
+
+        const { results } = await env.DB.prepare(query).bind(...binds).all();
 
         const asksComputed = withComputedOverdue(results || [], todayStr);
         const dashboard = buildDashboard(results || [], todayStr);
         const summary = await buildExecutiveSummary(env, project, dashboard, asksComputed, todayStr);
-        return json(summary);
+        return json(weekly ? { ...summary, range: "week", from: window.start.slice(0, 10), to: todayStr } : summary);
       }
 
       // --- Asks: λίστα ---
