@@ -5,50 +5,85 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Relay — Project tracking</title>
 <style>
-  :root{--v:#6d28d9;--s:#0ea5e9;--ink:#111827;--grey:#5a6472;--line:#e5e7eb;--bg:#faf9ff;
-        --red:#b91c1c;--redbg:#fde8e8;--green:#166534;--greenbg:#e7f6ec;--blue:#075985;--bluebg:#e6f4fc}
-  *{box-sizing:border-box}
-  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;color:var(--ink);background:var(--bg)}
-  header{padding:22px 26px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;background:#fff;flex-wrap:wrap}
-  header b{font-size:22px;color:var(--v)}
-  header span.tagline{color:var(--grey);font-size:14px}
-  header .spacer{flex:1}
-  #whoami{font-size:13px;color:var(--grey);cursor:pointer;text-decoration:underline dotted}
-  main{max-width:1000px;margin:0 auto;padding:26px}
-  .row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
-  input,select,button,textarea{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
-  button{background:var(--v);color:#fff;border:0;cursor:pointer}
-  button.secondary{background:#fff;color:var(--v);border:1px solid var(--v)}
-  button.danger-outline{background:#fff;color:var(--red);border:1px solid #fecaca}
-  .tabs{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
-  .tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}
-  .tabs button.active{background:var(--v);color:#fff;border-color:var(--v)}
-  .legend{font-size:11.5px;color:var(--grey);margin-bottom:14px}
-  .helptext{font-size:11.5px;color:var(--grey);margin:-6px 0 12px 2px}
-  h3{margin:20px 0 3px}
-  textarea{width:100%;min-height:100px}
+    :root{--v:#243b7a;--v-strong:#182957;--s:#08a7c7;--ink:#15213b;--grey:#64748b;--muted:#94a3b8;
+      --line:#dbe3ef;--line-strong:#c5d2e3;--bg:#f4f7fb;--surface:#fff;--surface-soft:#eef3f9;
+      --red:#d45555;--redbg:#fff0ef;--green:#138a63;--greenbg:#e9f8f1;--amber:#bd7b18;--amberbg:#fff6df;
+      --blue:#116b88;--bluebg:#e7f7fb;--cyan:#08a7c7;--shadow-sm:0 2px 8px rgba(21,33,59,.06);
+      --shadow-md:0 12px 30px rgba(21,33,59,.10);--radius:12px;--radius-sm:8px;--space:8px}
+    *{box-sizing:border-box}
+    html{background:var(--bg);scroll-behavior:smooth}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg);min-width:320px;overflow-x:hidden}
+    button,input,select,textarea{font:inherit}
+    button{min-height:44px}
+    button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid rgba(8,167,199,.35);outline-offset:2px}
+    header{height:72px;padding:0 28px 0 304px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.94);position:sticky;top:0;z-index:20;backdrop-filter:blur(12px)}
+    header b{font-size:22px;letter-spacing:.02em;color:var(--v)}
+    header span.tagline{color:var(--grey);font-size:13px}
+    header .spacer{flex:1}
+    #whoami{font-size:13px;color:var(--grey);cursor:pointer;text-decoration:underline dotted}
+    main{max-width:1000px;margin:0 auto;padding:26px}
+    #app.app-shell{max-width:none;margin:0;padding:28px 36px 72px 304px}
+    .workspace-content{max-width:1120px;margin:0 auto}
+    .row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
+    input,select,button,textarea{padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink)}
+    button{background:var(--v);color:#fff;border:0;cursor:pointer;box-shadow:var(--shadow-sm);transition:background .18s ease,transform .18s ease,box-shadow .18s ease}
+    button:hover{background:var(--v-strong);box-shadow:var(--shadow-md);transform:translateY(-1px)}
+    button.secondary{background:var(--surface);color:var(--v);border:1px solid var(--line-strong)}
+    button.secondary:hover{border-color:var(--v);background:var(--surface-soft)}
+    button.danger-outline{background:var(--surface);color:var(--red);border:1px solid #f4c1bd}
+    .tabs{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;padding:6px;background:var(--surface-soft);border:1px solid var(--line);border-radius:var(--radius);min-width:0;max-width:100%}
+    .tabs button{background:transparent;color:var(--grey);border:0;box-shadow:none}
+    .tabs button:hover{color:var(--v);background:rgba(255,255,255,.7);transform:none;box-shadow:none}
+    .tabs button.active{background:var(--v);color:#fff;border-color:var(--v);box-shadow:var(--shadow-sm)}
+    .legend{font-size:11.5px;color:var(--grey);margin-bottom:18px}
+    .helptext{font-size:12px;color:var(--grey);margin:-6px 0 12px 2px}
+    h3{margin:24px 0 6px;font-size:18px;letter-spacing:-.01em}
+    textarea{width:100%;min-height:112px;resize:vertical}
+
+    .app-sidebar{position:fixed;left:0;top:0;bottom:0;width:268px;padding:22px 16px;background:var(--v-strong);color:#fff;z-index:30;display:flex;flex-direction:column;box-shadow:8px 0 26px rgba(21,33,59,.12)}
+    .brand-lockup{display:flex;align-items:center;gap:10px;padding:0 12px 28px;border-bottom:1px solid rgba(255,255,255,.14)}
+    .brand-mark{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:var(--cyan);color:#fff;font-weight:800;font-size:18px}
+    .brand-lockup strong{font-size:20px;letter-spacing:.02em}.brand-lockup small{display:block;color:#b8c6e5;font-size:11px;margin-top:2px}
+    .sidebar-label{margin:24px 12px 8px;color:#9fb0d4;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+    .sidebar-nav{display:grid;gap:4px}.sidebar-nav button{width:100%;display:flex;align-items:center;gap:10px;text-align:left;background:transparent;color:#d8e1f5;border:0;box-shadow:none}.sidebar-nav button:hover,.sidebar-nav button.active{background:rgba(255,255,255,.12);color:#fff;transform:none;box-shadow:none}
+    .sidebar-nav .nav-icon{width:22px;text-align:center;color:#79d7e7}.sidebar-project{width:100%;color:var(--ink);background:#fff;border:0}.sidebar-project-label{font-size:12px;color:#b8c6e5;margin:0 12px 7px}
+    .sidebar-spacer{flex:1}.sidebar-profile{display:flex;align-items:center;gap:10px;padding:12px;border-top:1px solid rgba(255,255,255,.14);color:#d8e1f5}.profile-avatar{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#4d66ad;font-weight:700}.sidebar-profile small{display:block;color:#9fb0d4;font-size:11px;margin-top:2px}
+    .mobile-menu,.mobile-bottom-nav,.mobile-fab,.drawer-backdrop{display:none}
+    .shell-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm)}
+    .skeleton{background:linear-gradient(90deg,var(--surface-soft),#f8fafc,var(--surface-soft));background-size:200% 100%;animation:skeleton 1.5s infinite;border-radius:var(--radius-sm)}
+    .empty-state{padding:32px;text-align:center;color:var(--grey);border:1px dashed var(--line-strong);border-radius:var(--radius);background:rgba(255,255,255,.55)}
+    .toast{position:fixed;right:24px;bottom:24px;z-index:60;padding:12px 16px;border-radius:var(--radius-sm);background:var(--v-strong);color:#fff;box-shadow:var(--shadow-md)}
+    .modal-shell{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(21,33,59,.45);padding:20px}.modal-shell[hidden],.toast[hidden]{display:none}
+    @keyframes skeleton{to{background-position:-200% 0}}
 
   /* ---- Ask cards (βελτιωμένη εμφάνιση) ---- */
-  .card{background:#fff;border:1px solid var(--line);border-left:4px solid var(--line);
-        border-radius:10px;padding:14px 16px;margin-bottom:10px;
+    .card{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--line);
+      border-radius:var(--radius);padding:18px 20px;margin-bottom:12px;
         display:flex;justify-content:space-between;gap:14px;align-items:flex-start}
   .card.st-open{border-left-color:#a5b4fc}
   .card.st-accepted{border-left-color:var(--s)}
   .card.st-done{border-left-color:var(--green)}
   .card.st-overdue{border-left-color:var(--red)}
-  .title{font-weight:700;font-size:15px;color:var(--ink)}
+  .title{font-weight:750;font-size:16px;color:var(--ink);line-height:1.35}
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
   .chip{font-size:12px;color:var(--grey);background:#f5f4fb;border-radius:8px;padding:3px 9px;white-space:nowrap}
   .chip b{color:var(--ink);font-weight:600}
   .quote{color:#8a7fb5;font-size:12px;font-style:italic;margin-top:8px;padding:6px 10px;
          background:#faf8ff;border-left:2px solid #ddd6fe;border-radius:4px}
-  .pill{font-size:11.5px;padding:3px 10px;border-radius:999px;white-space:nowrap;display:inline-block;font-weight:600}
-  .open{background:#eef;color:#334}
+  .pill{font-size:11.5px;padding:5px 10px;border-radius:999px;white-space:nowrap;display:inline-block;font-weight:700}
+  .open{background:#e9eefb;color:var(--v)}
   .accepted{background:var(--bluebg);color:var(--blue)}
   .done{background:var(--greenbg);color:var(--green)}
   .overduebadge{background:var(--redbg);color:var(--red);margin-left:6px}
   .actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center;margin-top:10px}
-  .actions button{padding:6px 10px;font-size:12px}
+  .actions button{padding:6px 10px;font-size:12px;min-height:36px}
+  .action-menu{position:relative;display:inline-block;margin-top:10px;text-align:left}
+  .action-menu summary{list-style:none;display:grid;place-items:center;width:44px;height:44px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--v);cursor:pointer;font-size:20px;font-weight:800}
+  .action-menu summary::-webkit-details-marker{display:none}
+  .action-menu summary:hover{background:var(--surface-soft)}
+  .action-menu-content{position:absolute;right:0;top:50px;z-index:10;display:grid;gap:5px;min-width:130px;padding:7px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);box-shadow:var(--shadow-md)}
+  .action-menu-content button{width:100%;text-align:left;box-shadow:none}
+  .action-menu-content button:hover{transform:none}
   .locked-note{font-size:11px;color:var(--grey);white-space:nowrap}
 
   .edit-form{width:100%}
@@ -60,13 +95,13 @@
 
   /* ---- Dashboard ---- */
   .stat-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
-  .stat-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center}
+  .stat-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;text-align:center;box-shadow:var(--shadow-sm)}
   .stat-num{font-size:26px;font-weight:800;color:var(--ink)}
   .stat-label{font-size:12px;color:var(--grey);margin-top:2px}
   .stat-card.st-overdue .stat-num{color:var(--red)}
   .stat-card.st-done .stat-num{color:var(--green)}
   .stat-card.st-accepted .stat-num{color:var(--blue)}
-  table.report{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:22px}
+  table.report{width:100%;min-width:0;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:22px}
   table.report th{background:#f6f4fc;text-align:left;font-size:12px;color:var(--grey);padding:9px 12px;font-weight:600}
   table.report td{padding:9px 12px;font-size:13px;border-top:1px solid var(--line)}
   table.report td.num{text-align:center;font-weight:600}
@@ -79,10 +114,10 @@
   /* ---- Dashboard extras: charts / exports / AI summary ---- */
   .dash-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
   .dash-toolbar button{font-size:13px}
-  .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px}
-  .chart-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px}
+  .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px;min-width:0}
+  .chart-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow-sm);min-width:0;overflow:hidden}
   .chart-card h4{margin:0 0 10px;font-size:13px;color:var(--grey)}
-  .chart-card canvas{max-height:240px}
+  .chart-card canvas{max-height:240px;max-width:100%}
   .ai-summary{background:#fff;border:1px solid var(--line);border-left:4px solid var(--v);
               border-radius:10px;padding:16px 18px;margin-bottom:22px}
   .ai-summary h4{margin:0 0 8px;color:var(--v);font-size:14px}
@@ -107,9 +142,18 @@
   .auth-message{margin:14px 0 0;color:var(--grey);font-size:13px}
   .auth-error{color:var(--red)}
   .auth-success{color:var(--green)}
-  @media (max-width:720px){
-    .chart-grid{grid-template-columns:1fr}
-  }
+  .capture-preview{margin-top:18px}
+  .capture-item{background:#fff;border:1px solid var(--line);border-left:4px solid var(--s);border-radius:10px;padding:14px 16px;margin-bottom:10px}
+  .capture-item h4{margin:0 0 6px;font-size:14px}
+  .capture-quote{color:var(--grey);font-size:12px;font-style:italic;margin:6px 0 10px}
+  .owner-suggestion{font-size:13px;line-height:1.5;margin-bottom:8px}
+  .owner-evidence{color:var(--grey);font-size:12px;margin:4px 0 10px}
+  .owner-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .owner-actions input{min-width:190px;flex:1}
+  .capture-preview .actions{justify-content:flex-start;margin-top:12px}
+  @media (max-width:900px){.chart-grid{grid-template-columns:minmax(0,1fr);width:100%}.chart-card{width:100%}}
+  @media (max-width:900px){header{padding-left:84px}#app.app-shell{padding-left:28px}.app-sidebar{transform:translateX(-102%);transition:transform .24s ease}.app-sidebar.is-open{transform:translateX(0)}.drawer-backdrop.is-open{display:block;position:fixed;inset:0;background:rgba(21,33,59,.42);z-index:25}.mobile-menu{display:inline-grid;place-items:center;width:44px;padding:0;background:transparent;box-shadow:none;color:var(--v);font-size:20px}.mobile-menu:hover{background:var(--surface-soft);transform:none;box-shadow:none}.mobile-bottom-nav{position:fixed;left:12px;right:12px;bottom:12px;z-index:22;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;padding:6px;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-md)}.mobile-bottom-nav button{background:transparent;color:var(--grey);box-shadow:none;font-size:11px}.mobile-bottom-nav button:hover{color:var(--v);background:var(--surface-soft);transform:none;box-shadow:none}.mobile-fab{display:grid;position:fixed;right:20px;bottom:92px;z-index:23}.mobile-fab button{width:52px;height:52px;border-radius:50%;padding:0;background:var(--cyan);font-size:22px}.mobile-fab button:hover{background:#078ba8}}
+  @media (max-width:720px){header{height:64px;padding:0 14px;gap:8px}header b{font-size:19px}header span.tagline{display:none}#app.app-shell{padding:18px 14px 112px}.workspace-content{width:100%}.row{gap:8px}.tabs{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}.tabs button{flex:0 0 auto}.card{flex-direction:column;padding:16px}.card>div:last-child{width:100%;text-align:left!important;min-width:0!important}.actions{justify-content:flex-start}.edit-grid{grid-template-columns:1fr}.stat-grid{grid-template-columns:repeat(2,1fr)}.chart-grid{grid-template-columns:1fr}.dash-toolbar{display:grid;grid-template-columns:1fr 1fr}.dash-toolbar button{width:100%;font-size:12px}.insight-grid{grid-template-columns:1fr}table.report{display:block;overflow-x:auto;white-space:nowrap}.auth-view{margin:8vh 14px 0;padding:22px}.auth-view form{flex-direction:column}.auth-view form button{width:100%}#whoami{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.toast{left:14px;right:14px;bottom:86px}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -117,11 +161,30 @@
 </head>
 <body>
 <header>
+  <button id="mobileMenuButton" class="mobile-menu" type="button" aria-label="Άνοιγμα μενού" aria-controls="appSidebar" aria-expanded="false">☰</button>
   <b>Relay</b><span class="tagline">Projects that run themselves</span>
   <div class="spacer"></div>
   <span id="whoami"></span>
   <button id="logoutButton" class="secondary" type="button" style="display:none">Έξοδος</button>
 </header>
+<aside id="appSidebar" class="app-sidebar" aria-label="Workspace navigation">
+  <div class="brand-lockup"><div class="brand-mark">R</div><div><strong>Relay</strong><small>Project intelligence</small></div></div>
+  <div class="sidebar-label">Workspace</div>
+  <nav class="sidebar-nav" aria-label="Workspace">
+    <button type="button" class="active" onclick="selectAllAsks()"><span class="nav-icon">▦</span>All asks</button>
+    <button type="button" onclick="selectDashboard()"><span class="nav-icon">◫</span>Dashboard</button>
+  </nav>
+  <div class="sidebar-label">Project</div>
+  <label class="sidebar-project-label" for="projectSelect">Current project</label>
+  <select id="projectSelect" class="sidebar-project" aria-label="Current project"></select>
+  <div class="sidebar-nav" style="margin-top:8px">
+    <button type="button" onclick="createProject()"><span class="nav-icon">＋</span>New project</button>
+    <button type="button" onclick="deleteCurrentProject()"><span class="nav-icon">⌫</span>Delete project</button>
+  </div>
+  <div class="sidebar-spacer"></div>
+  <div class="sidebar-profile"><div class="profile-avatar">◉</div><div><strong>Workspace member</strong><small>Signed in</small></div></div>
+</aside>
+<div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
 <main id="authView" class="auth-view" hidden>
   <h1>Σύνδεση στο Relay</h1>
   <p id="authIntro">Βάλε το email σου και θα σου στείλουμε ένα ασφαλές link σύνδεσης.</p>
@@ -131,10 +194,10 @@
   </form>
   <p id="authMessage" class="auth-message" role="status"></p>
 </main>
-<main id="app" hidden>
+<main id="app" class="app-shell" hidden>
+ <div class="workspace-content">
   <div class="row">
     <label style="font-size:13px;color:var(--grey)">Project:</label>
-    <select id="projectSelect"></select>
     <button class="secondary" onclick="createProject()">+ Νέο project</button>
     <button class="danger-outline" onclick="deleteCurrentProject()">🗑 Διαγραφή project</button>
   </div>
@@ -171,13 +234,25 @@
       <button class="secondary" onclick="loadExample()">📝 Παράδειγμα</button>
       <span id="msg" style="align-self:center;color:var(--grey)"></span>
     </div>
+    <div id="capturePreview" class="capture-preview" hidden></div>
   </div>
+ </div>
 </main>
+<nav class="mobile-bottom-nav" aria-label="Mobile navigation">
+  <button type="button" onclick="selectAllAsks()"><span>▦</span><br>Asks</button>
+  <button type="button" onclick="selectDashboard()"><span>◫</span><br>Dashboard</button>
+  <button type="button" onclick="openDrawer()"><span>☰</span><br>Menu</button>
+</nav>
+<div class="mobile-fab"><button type="button" aria-label="Open capture" title="Open capture" onclick="focusCapture()">＋</button></div>
+<div id="modalShell" class="modal-shell" hidden role="dialog" aria-modal="true"></div>
+<div id="toast" class="toast" hidden role="status"></div>
 
 <script>
 let filter = "";
 let currentUser = "";
 let currentProject = localStorage.getItem("relay_project") || "";
+let capturePreviewItems = [];
+let capturePreviewBody = "";
 
 const EXAMPLE_MOM =
   "Θέμα: Πρακτικά συνάντησης — Project Kickoff, 25/08\n\n" +
@@ -743,11 +818,13 @@ async function load() {
         '<div style="text-align:right;min-width:150px">' +
           '<span class="pill ' + ask.status + '">' + ask.status + '</span>' +
           overdueBadge +
-          '<div class="actions">' +
-            '<button title="Ανάληψη ask" onclick="setStatus(\'' + ask.id + '\',\'accepted\')">Accept</button>' +
-            '<button title="Ολοκληρώθηκε" onclick="setStatus(\'' + ask.id + '\',\'done\')">Done</button>' +
-            editDeleteButtons +
-          '</div>' +
+          '<details class="action-menu"><summary aria-label="Ask actions" title="Ask actions">⋯</summary>' +
+            '<div class="action-menu-content">' +
+              '<button title="Ανάληψη ask" onclick="setStatus(\'' + ask.id + '\',\'accepted\')">Accept</button>' +
+              '<button title="Ολοκληρώθηκε" onclick="setStatus(\'' + ask.id + '\',\'done\')">Done</button>' +
+              editDeleteButtons +
+            '</div>' +
+          '</details>' +
         '</div>' +
       '</div>'
     );
@@ -787,11 +864,12 @@ async function addAsk() {
 
 async function ingest() {
   const body = document.getElementById("paste").value;
+  if (!body.trim() || !currentProject) return;
 
-  const r = await fetch("/api/ingest", {
+  const r = await fetch("/api/capture/preview", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ project_id: currentProject, type: "note", body: body, created_by: currentUser }),
+    body: JSON.stringify({ project_id: currentProject, body: body }),
   });
   const j = await r.json();
 
@@ -800,8 +878,89 @@ async function ingest() {
     return;
   }
 
-  document.getElementById("msg").textContent = "Βρέθηκαν " + j.extracted + " asks";
+  capturePreviewItems = j.items || [];
+  capturePreviewBody = body;
+  renderCapturePreview();
+  document.getElementById("msg").textContent = "Βρέθηκαν " + capturePreviewItems.length + " υποψήφια asks — επιβεβαίωσε τον owner πριν τη δημιουργία.";
+}
+
+function confidenceText(suggestion) {
+  if (!suggestion) return "Δεν υπάρχει owner suggestion.";
+  return Math.round((Number(suggestion.confidence) || 0) * 100) + "% · " + suggestion.confidence_label;
+}
+
+function renderCapturePreview() {
+  const preview = document.getElementById("capturePreview");
+  if (!capturePreviewItems.length) {
+    preview.hidden = false;
+    preview.innerHTML = '<p class="insight-empty">Δεν εντοπίστηκαν asks.</p>';
+    return;
+  }
+
+  preview.hidden = false;
+  preview.innerHTML = '<h3>🔎 Preview extraction</h3>' + capturePreviewItems.map(function(item, index) {
+    const suggestion = item.owner_suggestion;
+    const ownerValue = item.owner || "";
+    const suggestionText = suggestion && (suggestion.display_name || suggestion.email)
+      ? esc(suggestion.display_name || suggestion.email) + (suggestion.email ? " · " + esc(suggestion.email) : "")
+      : "Χωρίς τεκμηριωμένο owner";
+    const evidence = suggestion && suggestion.evidence && suggestion.evidence.length
+      ? "Evidence: " + suggestion.evidence.map(function(value) { return "“" + esc(value) + "”"; }).join(" · ")
+      : "Evidence: —";
+    return '<div class="capture-item" data-capture-index="' + index + '">' +
+      '<h4>' + esc(item.title) + '</h4>' +
+      '<p class="capture-quote">Quote: “' + esc(item.quote || item.title) + '”</p>' +
+      '<div class="owner-suggestion"><b>Suggested owner:</b> ' + suggestionText +
+        (suggestion ? " · " + confidenceText(suggestion) : "") + '</div>' +
+      '<p class="owner-evidence">' + evidence + '</p>' +
+      '<div class="owner-actions">' +
+        '<input id="capture-owner-' + index + '" value="' + esc(ownerValue) + '" placeholder="Owner ή email" />' +
+        '<button onclick="confirmSuggestedOwner(' + index + ')">Confirm suggestion</button>' +
+        '<button class="secondary" onclick="confirmEditedOwner(' + index + ')">Choose/edit owner</button>' +
+        '<button class="cancel-button" onclick="keepWithoutOwner(' + index + ')">Keep without owner</button>' +
+      '</div></div>';
+  }).join("") +
+  '<div class="actions"><button onclick="createPreviewAsks()">Create asks</button></div>';
+}
+
+function setPreviewOwner(index, value) {
+  document.getElementById("capture-owner-" + index).value = value || "";
+}
+
+function confirmSuggestedOwner(index) {
+  const suggestion = capturePreviewItems[index].owner_suggestion;
+  setPreviewOwner(index, suggestion ? (suggestion.email || suggestion.display_name) : "");
+}
+
+function confirmEditedOwner(index) {
+  const input = document.getElementById("capture-owner-" + index);
+  input.focus();
+}
+
+function keepWithoutOwner(index) {
+  setPreviewOwner(index, "");
+}
+
+async function createPreviewAsks() {
+  if (!capturePreviewItems.length) return;
+  const items = capturePreviewItems.map(function(item, index) {
+    return Object.assign({}, item, { owner: document.getElementById("capture-owner-" + index).value.trim() });
+  });
+  const r = await fetch("/api/capture/commit", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ project_id: currentProject, body: capturePreviewBody, items: items }),
+  });
+  const j = await r.json();
+  if (!r.ok) {
+    document.getElementById("msg").textContent = j.error || "Κάτι πήγε στραβά.";
+    return;
+  }
+  capturePreviewItems = [];
+  capturePreviewBody = "";
+  document.getElementById("capturePreview").hidden = true;
   document.getElementById("paste").value = "";
+  document.getElementById("msg").textContent = "Βρέθηκαν " + j.extracted + " asks";
   load();
 }
 
@@ -870,8 +1029,58 @@ async function deleteAsk(id) {
   await load();
 }
 
+function selectAllAsks() {
+  const tab = document.querySelector('.tabs button[data-f=""]');
+  if (tab) tab.click();
+  closeDrawer();
+}
+
+function selectDashboard() {
+  const tab = document.querySelector('.tabs button[data-f="__dashboard__"]');
+  if (tab) tab.click();
+  closeDrawer();
+}
+
+function openDrawer() {
+  const sidebar = document.getElementById("appSidebar");
+  const backdrop = document.getElementById("drawerBackdrop");
+  const menu = document.getElementById("mobileMenuButton");
+  sidebar.classList.add("is-open");
+  backdrop.hidden = false;
+  backdrop.classList.add("is-open");
+  menu.setAttribute("aria-expanded", "true");
+}
+
+function closeDrawer() {
+  const sidebar = document.getElementById("appSidebar");
+  const backdrop = document.getElementById("drawerBackdrop");
+  const menu = document.getElementById("mobileMenuButton");
+  if (!sidebar || !backdrop || !menu) return;
+  sidebar.classList.remove("is-open");
+  backdrop.classList.remove("is-open");
+  backdrop.hidden = true;
+  menu.setAttribute("aria-expanded", "false");
+}
+
+function focusCapture() {
+  selectAllAsks();
+  const capture = document.getElementById("paste");
+  if (capture) {
+    capture.scrollIntoView({ behavior: "smooth", block: "center" });
+    capture.focus();
+  }
+}
+
 document.getElementById("loginForm").addEventListener("submit", requestMagicLink);
 document.getElementById("logoutButton").addEventListener("click", logout);
+document.getElementById("mobileMenuButton").addEventListener("click", function() {
+  const sidebar = document.getElementById("appSidebar");
+  sidebar.classList.contains("is-open") ? closeDrawer() : openDrawer();
+});
+document.getElementById("drawerBackdrop").addEventListener("click", closeDrawer);
+document.addEventListener("keydown", function(event) {
+  if (event.key === "Escape") closeDrawer();
+});
 
 document.getElementById("projectSelect").addEventListener("change", function(e) {
   currentProject = e.target.value;
