@@ -48,7 +48,7 @@
     .sidebar-nav{display:grid;gap:4px}.sidebar-nav button{width:100%;display:flex;align-items:center;gap:10px;text-align:left;background:transparent;color:#d8e1f5;border:0;box-shadow:none}.sidebar-nav button:hover,.sidebar-nav button.active{background:rgba(255,255,255,.12);color:#fff;transform:none;box-shadow:none}
     .sidebar-nav .nav-icon{width:22px;text-align:center;color:#79d7e7}.sidebar-project{width:100%;color:var(--ink);background:#fff;border:0}.sidebar-project-label{font-size:12px;color:#b8c6e5;margin:0 12px 7px}
     .sidebar-spacer{flex:1}.sidebar-profile{display:flex;align-items:center;gap:10px;padding:12px;border-top:1px solid rgba(255,255,255,.14);color:#d8e1f5}.profile-avatar{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#4d66ad;font-weight:700}.sidebar-profile small{display:block;color:#9fb0d4;font-size:11px;margin-top:2px}
-    .mobile-menu,.mobile-bottom-nav,.mobile-fab,.drawer-backdrop{display:none}
+    .mobile-menu,.mobile-bottom-nav,.drawer-backdrop{display:none}
     .shell-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm)}
     .skeleton{background:linear-gradient(90deg,var(--surface-soft),#f8fafc,var(--surface-soft));background-size:200% 100%;animation:skeleton 1.5s infinite;border-radius:var(--radius-sm)}
     .empty-state{padding:32px;text-align:center;color:var(--grey);border:1px dashed var(--line-strong);border-radius:var(--radius);background:rgba(255,255,255,.55)}
@@ -151,8 +151,10 @@
   .owner-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
   .owner-actions input{min-width:190px;flex:1}
   .capture-preview .actions{justify-content:flex-start;margin-top:12px}
+  .capture-preview button{scroll-margin-bottom:132px}
+  .capture-preview .actions button{min-height:44px}
   @media (max-width:900px){.chart-grid{grid-template-columns:minmax(0,1fr);width:100%}.chart-card{width:100%}}
-  @media (max-width:900px){header{padding-left:84px}#app.app-shell{padding-left:28px}.app-sidebar{transform:translateX(-102%);transition:transform .24s ease}.app-sidebar.is-open{transform:translateX(0)}.drawer-backdrop.is-open{display:block;position:fixed;inset:0;background:rgba(21,33,59,.42);z-index:25}.mobile-menu{display:inline-grid;place-items:center;width:44px;padding:0;background:transparent;box-shadow:none;color:var(--v);font-size:20px}.mobile-menu:hover{background:var(--surface-soft);transform:none;box-shadow:none}.mobile-bottom-nav{position:fixed;left:12px;right:12px;bottom:12px;z-index:22;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;padding:6px;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-md)}.mobile-bottom-nav button{background:transparent;color:var(--grey);box-shadow:none;font-size:11px}.mobile-bottom-nav button:hover{color:var(--v);background:var(--surface-soft);transform:none;box-shadow:none}.mobile-fab{display:grid;position:fixed;right:20px;bottom:92px;z-index:23}.mobile-fab button{width:52px;height:52px;border-radius:50%;padding:0;background:var(--cyan);font-size:22px}.mobile-fab button:hover{background:#078ba8}}
+  @media (max-width:900px){header{padding-left:84px}#app.app-shell{padding-left:28px}.app-sidebar{transform:translateX(-102%);transition:transform .24s ease}.app-sidebar.is-open{transform:translateX(0)}.drawer-backdrop.is-open{display:block;position:fixed;inset:0;background:rgba(21,33,59,.42);z-index:25}.mobile-menu{display:inline-grid;place-items:center;width:44px;padding:0;background:transparent;box-shadow:none;color:var(--v);font-size:20px}.mobile-menu:hover{background:var(--surface-soft);transform:none;box-shadow:none}.mobile-bottom-nav{position:fixed;left:12px;right:12px;bottom:12px;z-index:22;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;padding:6px;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-md)}.mobile-bottom-nav button{background:transparent;color:var(--grey);box-shadow:none;font-size:11px}.mobile-bottom-nav button:hover{color:var(--v);background:var(--surface-soft);transform:none;box-shadow:none}.mobile-bottom-nav button.active{color:var(--v);background:var(--surface-soft);font-weight:700}.mobile-bottom-nav-primary{color:var(--v) !important;font-weight:700}}
   @media (max-width:720px){header{height:64px;padding:0 14px;gap:8px}header b{font-size:19px}header span.tagline{display:none}#app.app-shell{padding:18px 14px 112px}.workspace-content{width:100%}.row{gap:8px}.tabs{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}.tabs button{flex:0 0 auto}.card{flex-direction:column;padding:16px}.card>div:last-child{width:100%;text-align:left!important;min-width:0!important}.actions{justify-content:flex-start}.edit-grid{grid-template-columns:1fr}.stat-grid{grid-template-columns:repeat(2,1fr)}.chart-grid{grid-template-columns:1fr}.dash-toolbar{display:grid;grid-template-columns:1fr 1fr}.dash-toolbar button{width:100%;font-size:12px}.insight-grid{grid-template-columns:1fr}table.report{display:block;overflow-x:auto;white-space:nowrap}.auth-view{margin:8vh 14px 0;padding:22px}.auth-view form{flex-direction:column}.auth-view form button{width:100%}#whoami{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.toast{left:14px;right:14px;bottom:86px}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -165,14 +167,15 @@
   <b>Relay</b><span class="tagline">Projects that run themselves</span>
   <div class="spacer"></div>
   <span id="whoami"></span>
-  <button id="logoutButton" class="secondary" type="button" style="display:none">Έξοδος</button>
+  <button id="logoutButton" class="secondary" type="button" style="display:none">Αποσύνδεση</button>
 </header>
 <aside id="appSidebar" class="app-sidebar" aria-label="Workspace navigation">
   <div class="brand-lockup"><div class="brand-mark">R</div><div><strong>Relay</strong><small>Project intelligence</small></div></div>
   <div class="sidebar-label">Workspace</div>
   <nav class="sidebar-nav" aria-label="Workspace">
-    <button type="button" class="active" onclick="selectAllAsks()"><span class="nav-icon">▦</span>All asks</button>
-    <button type="button" onclick="selectDashboard()"><span class="nav-icon">◫</span>Dashboard</button>
+    <button type="button" class="active" id="sidebarAllAsksButton" onclick="selectAllAsks()"><span class="nav-icon">▦</span>Όλα τα asks</button>
+    <button type="button" id="sidebarDashboardButton" onclick="selectDashboard()"><span class="nav-icon">◫</span>Dashboard</button>
+    <button type="button" onclick="openAIInsights()"><span class="nav-icon">🤖</span>AI Insights</button>
   </nav>
   <div class="sidebar-label">Project</div>
   <label class="sidebar-project-label" for="projectSelect">Current project</label>
@@ -182,6 +185,9 @@
     <button type="button" onclick="deleteCurrentProject()"><span class="nav-icon">⌫</span>Delete project</button>
   </div>
   <div class="sidebar-spacer"></div>
+  <div class="sidebar-nav">
+    <button type="button" onclick="logout()"><span class="nav-icon">⏻</span>Αποσύνδεση</button>
+  </div>
   <div class="sidebar-profile"><div class="profile-avatar">◉</div><div><strong>Workspace member</strong><small>Signed in</small></div></div>
 </aside>
 <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
@@ -226,7 +232,7 @@
       <button onclick="addAsk()">Προσθήκη</button>
     </div>
 
-    <h3>📋 Capture κειμένου</h3>
+    <h3>📋 Καταγραφή κειμένου</h3>
     <div class="helptext">Επικόλλησε email, chat ή πρακτικά συνάντησης — το AI εξάγει asks αυτόματα.</div>
     <textarea id="paste" placeholder="Επικόλλησε κείμενο εδώ..."></textarea>
     <div class="row" style="margin-top:10px">
@@ -238,12 +244,11 @@
   </div>
  </div>
 </main>
-<nav class="mobile-bottom-nav" aria-label="Mobile navigation">
-  <button type="button" onclick="selectAllAsks()"><span>▦</span><br>Asks</button>
-  <button type="button" onclick="selectDashboard()"><span>◫</span><br>Dashboard</button>
-  <button type="button" onclick="openDrawer()"><span>☰</span><br>Menu</button>
+<nav class="mobile-bottom-nav" aria-label="Πλοήγηση">
+  <button type="button" id="navAsksButton" onclick="selectAllAsks()"><span aria-hidden="true">▦</span><br>Asks</button>
+  <button type="button" id="navCaptureButton" class="mobile-bottom-nav-primary" onclick="focusCapture()"><span aria-hidden="true">＋</span><br>Καταγραφή</button>
+  <button type="button" id="navDashboardButton" onclick="selectDashboard()"><span aria-hidden="true">◫</span><br>Dashboard</button>
 </nav>
-<div class="mobile-fab"><button type="button" aria-label="Open capture" title="Open capture" onclick="focusCapture()">＋</button></div>
 <div id="modalShell" class="modal-shell" hidden role="dialog" aria-modal="true"></div>
 <div id="toast" class="toast" hidden role="status"></div>
 
@@ -611,8 +616,8 @@ async function loadAIInsights() {
       '<div class="insight-grid">' +
         '<div class="insight"><h5>Καθυστερημένα (' + data.counts.overdue + ')</h5>' + renderItems(data.overdue) + '</div>' +
         '<div class="insight"><h5>Blocked (' + data.counts.blocked + ')</h5>' + renderItems(data.blocked) + '</div>' +
-        '<div class="insight"><h5>Unassigned (' + data.counts.unassigned + ')</h5>' + renderItems(data.unassigned) + '</div>' +
-      '</div><p class="risk-summary"><b>Project risk:</b> ' + esc(data.risk_summary) + '</p></div>';
+        '<div class="insight"><h5>Χωρίς owner (' + data.counts.unassigned + ')</h5>' + renderItems(data.unassigned) + '</div>' +
+      '</div><p class="risk-summary"><b>Εκτίμηση κινδύνου έργου:</b> ' + esc(data.risk_summary) + '</p></div>';
   } catch (e) {
     box.innerHTML = '<div class="ai-insights"><p class="loading">Αποτυχία φόρτωσης AI insights.</p></div>';
   }
@@ -764,6 +769,7 @@ async function exportPPT() {
 // ---------- Asks ----------
 async function load() {
   const isDashboard = filter === "__dashboard__";
+  syncNavActiveState(isDashboard);
   document.getElementById("dashboardView").style.display = isDashboard ? "block" : "none";
   document.getElementById("list").style.display = isDashboard ? "none" : "block";
   document.getElementById("createSection").style.display = isDashboard ? "none" : "block";
@@ -914,17 +920,25 @@ function renderCapturePreview() {
         (suggestion ? " · " + confidenceText(suggestion) : "") + '</div>' +
       '<p class="owner-evidence">' + evidence + '</p>' +
       '<div class="owner-actions">' +
-        '<input id="capture-owner-' + index + '" value="' + esc(ownerValue) + '" placeholder="Owner ή email" />' +
-        '<button onclick="confirmSuggestedOwner(' + index + ')">Confirm suggestion</button>' +
-        '<button class="secondary" onclick="confirmEditedOwner(' + index + ')">Choose/edit owner</button>' +
-        '<button class="cancel-button" onclick="keepWithoutOwner(' + index + ')">Keep without owner</button>' +
+        '<input id="capture-owner-' + index + '" value="' + esc(ownerValue) + '" placeholder="Owner ή email" oninput="updatePreviewOwnerFromInput(' + index + ', this.value)" />' +
+        '<button type="button" onclick="confirmSuggestedOwner(' + index + ')">Επιβεβαίωση πρότασης</button>' +
+        '<button type="button" class="secondary" onclick="confirmEditedOwner(' + index + ')">Επιλογή ή αλλαγή owner</button>' +
+        '<button type="button" class="cancel-button" onclick="keepWithoutOwner(' + index + ')">Χωρίς owner</button>' +
       '</div></div>';
   }).join("") +
-  '<div class="actions"><button onclick="createPreviewAsks()">Create asks</button></div>';
+  '<div class="actions"><button type="button" id="createAsksButton" onclick="createPreviewAsks()">Δημιουργία asks</button></div>';
 }
 
+// capturePreviewItems is the source of truth; DOM inputs only mirror it.
 function setPreviewOwner(index, value) {
-  document.getElementById("capture-owner-" + index).value = value || "";
+  const cleanValue = value || "";
+  capturePreviewItems[index].owner = cleanValue;
+  const input = document.getElementById("capture-owner-" + index);
+  if (input) input.value = cleanValue;
+}
+
+function updatePreviewOwnerFromInput(index, value) {
+  capturePreviewItems[index].owner = (value || "").trim();
 }
 
 function confirmSuggestedOwner(index) {
@@ -934,34 +948,54 @@ function confirmSuggestedOwner(index) {
 
 function confirmEditedOwner(index) {
   const input = document.getElementById("capture-owner-" + index);
-  input.focus();
+  if (input) input.focus();
 }
 
 function keepWithoutOwner(index) {
   setPreviewOwner(index, "");
 }
 
+let creatingPreviewAsks = false;
+
 async function createPreviewAsks() {
-  if (!capturePreviewItems.length) return;
-  const items = capturePreviewItems.map(function(item, index) {
-    return Object.assign({}, item, { owner: document.getElementById("capture-owner-" + index).value.trim() });
-  });
-  const r = await fetch("/api/capture/commit", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ project_id: currentProject, body: capturePreviewBody, items: items }),
-  });
-  const j = await r.json();
-  if (!r.ok) {
-    document.getElementById("msg").textContent = j.error || "Κάτι πήγε στραβά.";
-    return;
+  if (!capturePreviewItems.length || creatingPreviewAsks) return;
+  const button = document.getElementById("createAsksButton");
+  const msgEl = document.getElementById("msg");
+  creatingPreviewAsks = true;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Δημιουργία asks...";
   }
-  capturePreviewItems = [];
-  capturePreviewBody = "";
-  document.getElementById("capturePreview").hidden = true;
-  document.getElementById("paste").value = "";
-  document.getElementById("msg").textContent = "Βρέθηκαν " + j.extracted + " asks";
-  load();
+  try {
+    const items = capturePreviewItems.map(function(item) {
+      return Object.assign({}, item, { owner: (item.owner || "").trim() });
+    });
+    const r = await fetch("/api/capture/commit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: currentProject, body: capturePreviewBody, items: items }),
+    });
+    const j = await r.json().catch(function() { return {}; });
+    if (!r.ok) {
+      msgEl.textContent = "Δεν ήταν δυνατή η δημιουργία των asks: " + (j.error || "Κάτι πήγε στραβά.");
+      return;
+    }
+    capturePreviewItems = [];
+    capturePreviewBody = "";
+    document.getElementById("capturePreview").hidden = true;
+    document.getElementById("paste").value = "";
+    msgEl.textContent = "✓ Δημιουργήθηκαν " + j.extracted + " asks";
+    await load();
+    msgEl.scrollIntoView({ block: "center", behavior: "smooth" });
+  } catch (e) {
+    msgEl.textContent = "Δεν ήταν δυνατή η δημιουργία των asks: " + (e.message || "network error");
+  } finally {
+    creatingPreviewAsks = false;
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Δημιουργία asks";
+    }
+  }
 }
 
 function showEdit(ask) {
@@ -1069,6 +1103,26 @@ function focusCapture() {
     capture.scrollIntoView({ behavior: "smooth", block: "center" });
     capture.focus();
   }
+}
+
+function openAIInsights() {
+  selectDashboard();
+  setTimeout(function() {
+    const box = document.getElementById("aiInsightsBox");
+    if (box) box.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 50);
+}
+
+function syncNavActiveState(isDashboard) {
+  const asksActive = !isDashboard;
+  const toggle = function(id, active) {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle("active", active);
+  };
+  toggle("sidebarAllAsksButton", asksActive);
+  toggle("sidebarDashboardButton", isDashboard);
+  toggle("navAsksButton", asksActive);
+  toggle("navDashboardButton", isDashboard);
 }
 
 document.getElementById("loginForm").addEventListener("submit", requestMagicLink);
