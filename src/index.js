@@ -1325,7 +1325,11 @@ export default {
       return json({ error: "not found" }, 404);
     }
 
-    return env.ASSETS.fetch(request);
+    // Εσωτερικό εργαλείο: καμία ευρετηρίαση (μαζί με robots.txt και meta robots).
+    const asset = await env.ASSETS.fetch(request);
+    const response = new Response(asset.body, asset);
+    response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+    return response;
   },
 
   async email(message, env) {
