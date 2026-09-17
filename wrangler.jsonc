@@ -8,7 +8,12 @@
 
   "vars": {
     "BETTER_AUTH_URL": "https://relay.nkourouklis.workers.dev",
-    "AUTH_EMAIL_FROM": "Relay <nkourouklis@ireneart.eu>"
+    "AUTH_EMAIL_FROM": "Relay <nkourouklis@ireneart.eu>",
+    // Φάση 1: login μόνο με email αυτού του domain...
+    "ALLOWED_EMAIL_DOMAIN": "kafkas.gr"
+    // ...ή με ένα από τα ρητά emails του secret ALLOWED_EMAILS (comma-separated, δεν δίνουν ρόλο admin).
+    // Secret και όχι var, για να μη μπαίνουν προσωπικά emails στο (δημόσιο) repo:
+    //   npx wrangler secret put ALLOWED_EMAILS
   },
 
   // Στατικό frontend (public/) σερβίρεται από τον ίδιο Worker
