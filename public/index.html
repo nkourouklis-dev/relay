@@ -139,6 +139,11 @@
   .auth-view p{color:var(--grey);font-size:14px;line-height:1.5}
   .auth-view form{display:flex;gap:8px;margin-top:20px}
   .auth-view form[hidden]{display:none}
+  #resendLinkButton{margin-top:16px}
+  #resendLinkButton[hidden]{display:none}
+  /* Αποσυνδεδεμένος: χωρίς sidebar/bottom nav της εφαρμογής */
+  body.logged-out .app-sidebar,body.logged-out .mobile-bottom-nav,body.logged-out .mobile-menu,body.logged-out .drawer-backdrop{display:none !important}
+  body.logged-out header{padding-left:28px}
   .auth-view input{flex:1;min-width:0}
   .auth-message{margin:14px 0 0;color:var(--grey);font-size:13px}
   .auth-error{color:var(--red)}
@@ -200,6 +205,7 @@
     <button id="loginButton" type="submit">Στείλε link</button>
   </form>
   <p id="authMessage" class="auth-message" role="status"></p>
+  <button id="resendLinkButton" class="secondary" type="button" hidden>Στείλε νέο link ή άλλαξε email</button>
 </main>
 <main id="app" class="app-shell" hidden>
  <div class="workspace-content">
@@ -295,21 +301,53 @@ function showLogin(message, className) {
   currentUser = "";
   currentUserId = "";
   currentRole = "user";
+  document.body.classList.add("logged-out");
+  closeDrawer();
   document.getElementById("authView").hidden = false;
   document.getElementById("app").hidden = true;
   renderWhoAmI();
   const messageEl = document.getElementById("authMessage");
   messageEl.textContent = message || "";
   messageEl.className = "auth-message" + (className ? " " + className : "");
+  document.getElementById("authIntro").textContent = LOGIN_INTRO;
   document.getElementById("loginForm").hidden = false;
+  document.getElementById("resendLinkButton").hidden = true;
   document.getElementById("loginButton").disabled = false;
   document.getElementById("loginButton").textContent = "Στείλε link";
+}
+
+const LOGIN_INTRO = "Βάλε το εταιρικό σου email και θα σου στείλουμε ένα ασφαλές link σύνδεσης. Αν είναι η πρώτη σου φορά, ο λογαριασμός δημιουργείται αυτόματα όταν πατήσεις το link.";
+
+// Better Auth επιστρέφει ?error=... όταν το magic link είναι άκυρο/ληγμένο/ήδη χρησιμοποιημένο.
+function takeLoginErrorFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("error");
+  if (!code) return "";
+  params.delete("error");
+  params.delete("error_description");
+  const query = params.toString();
+  window.history.replaceState(null, "", window.location.pathname + (query ? "?" + query : "") + window.location.hash);
+  if (code === "INVALID_TOKEN" || code === "EXPIRED_TOKEN") {
+    return "Ο σύνδεσμος έληξε ή έχει ήδη χρησιμοποιηθεί (ισχύει 5 λεπτά και μία φορά). Ζήτα νέο link. Αν το ανοίγεις από εταιρικό Outlook και συμβαίνει ξανά, ίσως το «ανοίγει» πρώτο το σύστημα ασφαλείας του email.";
+  }
+  if (code === "FORBIDDEN" || code === "new_user_signup_disabled") {
+    return "Η σύνδεση δεν επιτρέπεται για αυτό το email.";
+  }
+  return "Η σύνδεση δεν ολοκληρώθηκε. Ζήτα νέο link.";
+}
+
+function resetLoginForm() {
+  showLogin();
+  const input = document.getElementById("loginEmail");
+  input.focus();
+  input.select();
 }
 
 function showApp(session) {
   currentUser = session.user.email;
   currentUserId = session.user.id || "";
   currentRole = session.user.role === "admin" ? "admin" : "user";
+  document.body.classList.remove("logged-out");
   document.getElementById("authView").hidden = true;
   document.getElementById("app").hidden = false;
   renderWhoAmI();
@@ -326,10 +364,11 @@ async function checkSession() {
     });
     if (!response.ok) throw new Error();
     const session = await response.json();
+    const loginError = takeLoginErrorFromUrl();
     if (session && session.user) {
       showApp(session);
     } else {
-      showLogin();
+      showLogin(loginError, loginError ? "auth-error" : "");
     }
   } catch {
     showLogin("Δεν ήταν δυνατός ο έλεγχος σύνδεσης. Δοκίμασε ξανά.", "auth-error");
@@ -359,9 +398,11 @@ async function requestMagicLink(event) {
       throw new Error(response.status === 403 && errorBody.message ? errorBody.message : "");
     }
     document.getElementById("loginForm").hidden = true;
-    document.getElementById("authIntro").textContent = "Αν υπάρχει λογαριασμός για αυτό το email, θα λάβεις σύνδεσμο στα εισερχόμενά σου.";
+    document.getElementById("resendLinkButton").hidden = false;
+    document.getElementById("authIntro").textContent =
+      "Στείλαμε link σύνδεσης στο " + email + ". Αν είναι η πρώτη σου σύνδεση, ο λογαριασμός σου δημιουργείται αυτόματα μόλις πατήσεις το link.";
     messageEl.className = "auth-message auth-success";
-    messageEl.textContent = "Έλεγξε τα εισερχόμενά σου για το link σύνδεσης.";
+    messageEl.textContent = "Το link ισχύει 5 λεπτά και μία φορά. Αν δεν το βλέπεις, κοίτα στα Ανεπιθύμητα / Junk ή στην καραντίνα email.";
   } catch (error) {
     button.disabled = false;
     button.textContent = "Στείλε link";
@@ -1152,6 +1193,8 @@ function syncNavActiveState(isDashboard) {
 }
 
 document.getElementById("loginForm").addEventListener("submit", requestMagicLink);
+document.getElementById("resendLinkButton").addEventListener("click", resetLoginForm);
+document.body.classList.add("logged-out");
 document.getElementById("logoutButton").addEventListener("click", logout);
 document.getElementById("mobileMenuButton").addEventListener("click", function() {
   const sidebar = document.getElementById("appSidebar");
