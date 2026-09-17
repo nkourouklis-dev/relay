@@ -3,8 +3,9 @@
 Χρήση (χρειάζεται Pillow):
     python tools/generate_brand_assets.py
 
-Αν υπάρχει το public/brand/kafkas-logo.png (επίσημο λογότυπο Καυκάς, διάφανο φόντο),
-μπαίνει στην εικόνα προεπισκόπησης (og-image.png). Ξανατρέξε το script μετά την προσθήκη του.
+Αν υπάρχει το public/brand/kafkas-logo.png (επίσημο μπλε λογότυπο Καυκάς, διάφανο φόντο,
+πηγή: Logo_CMYK_GR.png), παράγεται και η λευκή εκδοχή public/brand/kafkas-logo-white.png
+(για σκούρο φόντο) και μπαίνει στην εικόνα προεπισκόπησης (og-image.png).
 """
 from pathlib import Path
 
@@ -54,18 +55,30 @@ def og_image():
     draw.text((92, 350), "Από τις συζητήσεις σε ενέργειες", font=font(52, bold=True), fill=WHITE)
     draw.text((92, 420), "με υπεύθυνο και προθεσμία.", font=font(52), fill=MUTED)
 
-    logo_path = BRAND / "kafkas-logo.png"
+    logo_path = BRAND / "kafkas-logo-white.png"
     if logo_path.exists():
         logo = Image.open(logo_path).convert("RGBA")
-        logo.thumbnail((300, 110))
-        img.paste(logo, (w - logo.width - 90, 90), logo)
+        logo.thumbnail((320, 60))
+        img.paste(logo, (w - logo.width - 90, 95), logo)
     else:
         draw.text((w - 90, 110), "ΚΑΥΚΑΣ", font=font(40, bold=True), fill=MUTED, anchor="ra")
     return img
 
 
+def white_logo():
+    source = BRAND / "kafkas-logo.png"
+    if not source.exists():
+        return
+    logo = Image.open(source).convert("RGBA")
+    alpha = logo.getchannel("A")
+    white = Image.new("RGBA", logo.size, WHITE + (255,))
+    white.putalpha(alpha)
+    white.save(BRAND / "kafkas-logo-white.png", optimize=True)
+
+
 def main():
     BRAND.mkdir(parents=True, exist_ok=True)
+    white_logo()
     mark(512).save(PUBLIC / "icon-512.png")
     mark(192).save(PUBLIC / "icon-192.png")
     mark(512, padding_ratio=0.12, background=NAVY + (255,)).save(PUBLIC / "icon-maskable-512.png")

@@ -179,6 +179,10 @@
   .risk-summary{margin:0;font-size:14px;line-height:1.5}
   .auth-view{max-width:440px;margin:12vh auto 0;padding:28px;background:#fff;border:1px solid var(--line);border-radius:12px}
   .auth-view h1{margin:0 0 8px;font-size:24px;color:var(--v)}
+  .auth-brand{display:block;height:30px;width:auto;margin:0 0 22px}
+  .header-kafkas{height:20px;width:auto;margin-left:6px;opacity:.95}
+  .brand-kafkas{display:block;height:13px;width:auto;margin-top:6px;opacity:.9}
+  @media (max-width:720px){.header-kafkas{height:16px}.auth-brand{height:24px}}
   .auth-view p{color:var(--grey);font-size:14px;line-height:1.5}
   .auth-view form{display:flex;gap:8px;margin-top:20px}
   .auth-view form[hidden]{display:none}
@@ -213,13 +217,13 @@
 <body>
 <header>
   <button id="mobileMenuButton" class="mobile-menu" type="button" aria-label="Άνοιγμα μενού" aria-controls="appSidebar" aria-expanded="false">☰</button>
-  <b>Relay</b><span class="tagline">Projects that run themselves</span>
+  <b>Relay</b><img class="header-kafkas" src="/brand/kafkas-logo.png" alt="ΚΑΥΚΑΣ" width="150" height="20" /><span class="tagline">Από τις συζητήσεις σε ενέργειες</span>
   <div class="spacer"></div>
   <span id="whoami"></span>
   <button id="logoutButton" class="secondary" type="button" style="display:none">Αποσύνδεση</button>
 </header>
 <aside id="appSidebar" class="app-sidebar" aria-label="Workspace navigation">
-  <div class="brand-lockup"><div class="brand-mark">R</div><div><strong>Relay</strong><small>Project intelligence</small></div></div>
+  <div class="brand-lockup"><div class="brand-mark">R</div><div><strong>Relay</strong><img class="brand-kafkas" src="/brand/kafkas-logo-white.png" alt="ΚΑΥΚΑΣ" width="97" height="13" /></div></div>
   <div class="sidebar-label">Workspace</div>
   <nav class="sidebar-nav" aria-label="Workspace">
     <button type="button" class="active" id="sidebarAllAsksButton" onclick="selectAllAsks()"><span class="nav-icon">▦</span>Όλα τα asks</button>
@@ -241,6 +245,7 @@
 </aside>
 <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
 <main id="authView" class="auth-view" hidden>
+  <img class="auth-brand" src="/brand/kafkas-logo.png" alt="ΚΑΥΚΑΣ" width="224" height="30" />
   <h1>Σύνδεση στο Relay</h1>
   <p id="authIntro">Βάλε το email σου και θα σου στείλουμε ένα ασφαλές link σύνδεσης.</p>
   <form id="loginForm">
