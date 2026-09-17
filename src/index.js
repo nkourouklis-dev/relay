@@ -593,19 +593,110 @@ async function extractWithAI(env, text) {
       /* ignore */
     }
   }
-  return [];
+  // null = μη αναγνώσιμη απάντηση (≠ έγκυρη κενή λίστα «καμία ενέργεια»)
+  return null;
 }
 
-async function extractItems(env, text) {
+// ---------- Extraction μεγάλων κειμένων ----------
+// Το μοντέλο έχει περιορισμένο context και max_tokens εξόδου, οπότε μεγάλα κείμενα
+// (πρακτικά, email threads) αναλύονται σε κομμάτια και τα αποτελέσματα ενώνονται.
+const MAX_CAPTURE_CHARS = 100000;
+const EXTRACTION_CHUNK_CHARS = 8000;
+const EXTRACTION_CONCURRENCY = 3;
+const MAX_EXTRACTED_ITEMS = 100;
+
+function splitIntoChunks(text, maxChars) {
+  const chunks = [];
+  let current = "";
+  const flush = () => {
+    if (current.trim()) chunks.push(current);
+    current = "";
+  };
+  // Κόψιμο σε όρια παραγράφων, μετά γραμμών, και μόνο αν χρειαστεί σε σκέτους χαρακτήρες.
+  for (const paragraph of text.split(/(\n\s*\n)/)) {
+    if (current.length + paragraph.length <= maxChars) {
+      current += paragraph;
+      continue;
+    }
+    flush();
+    if (paragraph.length <= maxChars) {
+      current = paragraph;
+      continue;
+    }
+    for (const line of paragraph.split(/(\n)/)) {
+      if (current.length + line.length > maxChars) flush();
+      for (let start = 0; start < line.length; start += maxChars) {
+        const piece = line.slice(start, start + maxChars);
+        if (current.length + piece.length > maxChars) flush();
+        current += piece;
+      }
+    }
+  }
+  flush();
+  return chunks;
+}
+
+// Κάνει τα αποτελέσματα του μοντέλου συμβατά με το capture commit (αλλιώς ένα «κακό» item
+// απέρριπτε όλο το batch).
+function normalizeExtractedItem(item) {
+  const title = String(item?.title || "").trim().slice(0, 240);
+  if (!title) return null;
+  const dueDate = String(item?.due_date || "").trim();
+  const quote = String(item?.quote || "").trim() || title;
+  return {
+    ...item,
+    title,
+    owner: "",
+    due_date: /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : "",
+    quote: quote.slice(0, 2000),
+    owner_suggestion: item?.owner_suggestion || null,
+  };
+}
+
+async function extractChunk(env, chunk) {
   if (env.AI) {
     try {
-      const items = await extractWithAI(env, text);
-      if (items && items.length) return items;
+      const items = await extractWithAI(env, chunk);
+      // Έγκυρη απάντηση (ακόμα και κενή) -> εμπιστευόμαστε το AI, χωρίς naive ψευδώς θετικά.
+      if (Array.isArray(items)) return items;
+      console.log("AI extraction returned unreadable output, fallback to naive");
     } catch (e) {
       console.log("AI extraction failed, fallback to naive:", e);
     }
   }
-  return naiveExtract(text);
+  return naiveExtract(chunk);
+}
+
+async function extractItems(env, text) {
+  const source = String(text || "").slice(0, MAX_CAPTURE_CHARS);
+  const chunks = splitIntoChunks(source, EXTRACTION_CHUNK_CHARS);
+  const results = new Array(chunks.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < chunks.length) {
+      const index = next++;
+      results[index] = await extractChunk(env, chunks[index]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(EXTRACTION_CONCURRENCY, chunks.length) }, worker));
+
+  // Διπλότυπα μεταξύ κομματιών: ίδιος τίτλος+ημερομηνία ή ίδιο αυτούσιο απόσπασμα
+  // (ο τίτλος μπορεί να βγει μία στα ελληνικά και μία στα αγγλικά για την ίδια πρόταση).
+  const simplify = (value) => normalizeForTriggerMatching(value).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const seen = new Set();
+  const items = [];
+  for (const item of results.flat()) {
+    const clean = normalizeExtractedItem(item);
+    if (!clean) continue;
+    const titleKey = "t|" + simplify(clean.title) + "|" + clean.due_date;
+    const quoteKey = "q|" + simplify(clean.quote);
+    if (seen.has(titleKey) || seen.has(quoteKey)) continue;
+    seen.add(titleKey);
+    seen.add(quoteKey);
+    items.push(clean);
+    if (items.length >= MAX_EXTRACTED_ITEMS) break;
+  }
+  return items;
 }
 
 // ---------- Projects ----------
@@ -674,14 +765,20 @@ async function deleteProject(env, projectId) {
 
 // ---------- Ingest (capture) ----------
 function validateCaptureBody(body) {
-  if (typeof body !== "string" || !body.trim() || body.length > 20000) {
-    throw new Error("Το capture body πρέπει να είναι non-empty string έως 20000 χαρακτήρες");
+  if (typeof body !== "string" || !body.trim()) {
+    throw new Error("Επικόλλησε κείμενο για ανάλυση.");
+  }
+  if (body.length > MAX_CAPTURE_CHARS) {
+    throw new Error(
+      `Το κείμενο είναι πολύ μεγάλο (${body.length.toLocaleString("el-GR")} χαρακτήρες). ` +
+      `Το όριο είναι ${MAX_CAPTURE_CHARS.toLocaleString("el-GR")} — χώρισέ το σε δύο καταγραφές.`
+    );
   }
   return body;
 }
 
 function validateCaptureItems(items) {
-  if (!Array.isArray(items) || items.length > 20) {
+  if (!Array.isArray(items) || items.length > MAX_EXTRACTED_ITEMS) {
     throw new Error("Μη έγκυρα capture items");
   }
 

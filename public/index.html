@@ -295,7 +295,7 @@
     <div class="helptext">Επικόλλησε email, chat ή πρακτικά συνάντησης — το AI εξάγει asks αυτόματα.</div>
     <textarea id="paste" placeholder="Επικόλλησε κείμενο εδώ..."></textarea>
     <div class="row" style="margin-top:10px">
-      <button class="secondary" onclick="ingest()">✨ Εξαγωγή asks</button>
+      <button id="extractButton" class="secondary" onclick="ingest()">✨ Εξαγωγή asks</button>
       <button class="secondary" onclick="loadExample()">📝 Παράδειγμα</button>
       <span id="msg" style="align-self:center;color:var(--grey)"></span>
     </div>
@@ -1036,26 +1036,49 @@ async function addAsk() {
   load();
 }
 
+const MAX_CAPTURE_CHARS = 100000;
+let extractingAsks = false;
+
 async function ingest() {
   const body = document.getElementById("paste").value;
-  if (!body.trim() || !currentProject) return;
-
-  const r = await fetch("/api/capture/preview", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ project_id: currentProject, body: body }),
-  });
-  const j = await r.json();
-
-  if (!r.ok) {
-    document.getElementById("msg").textContent = j.error || "Κάτι πήγε στραβά.";
+  const msgEl = document.getElementById("msg");
+  if (!body.trim() || !currentProject || extractingAsks) return;
+  if (body.length > MAX_CAPTURE_CHARS) {
+    msgEl.textContent = "Το κείμενο έχει " + body.length.toLocaleString("el-GR") + " χαρακτήρες. Το όριο είναι " +
+      MAX_CAPTURE_CHARS.toLocaleString("el-GR") + " — χώρισέ το σε δύο καταγραφές.";
     return;
   }
 
-  capturePreviewItems = j.items || [];
-  capturePreviewBody = body;
-  renderCapturePreview();
-  document.getElementById("msg").textContent = "Βρέθηκαν " + capturePreviewItems.length + " υποψήφια asks — επιβεβαίωσε τον owner πριν τη δημιουργία.";
+  const button = document.getElementById("extractButton");
+  extractingAsks = true;
+  if (button) { button.disabled = true; button.textContent = "⏳ Ανάλυση..."; }
+  msgEl.textContent = body.length > 8000
+    ? "Ανάλυση μεγάλου κειμένου σε κομμάτια — μπορεί να πάρει έως ένα λεπτό..."
+    : "Ανάλυση κειμένου...";
+
+  try {
+    const r = await fetch("/api/capture/preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: currentProject, body: body }),
+    });
+    const j = await r.json().catch(function() { return {}; });
+
+    if (!r.ok) {
+      msgEl.textContent = j.error || "Κάτι πήγε στραβά. Δοκίμασε ξανά.";
+      return;
+    }
+
+    capturePreviewItems = j.items || [];
+    capturePreviewBody = body;
+    renderCapturePreview();
+    msgEl.textContent = "Βρέθηκαν " + capturePreviewItems.length + " υποψήφια asks — επιβεβαίωσε τον owner πριν τη δημιουργία.";
+  } catch (e) {
+    msgEl.textContent = "Η ανάλυση απέτυχε (δίκτυο). Δοκίμασε ξανά.";
+  } finally {
+    extractingAsks = false;
+    if (button) { button.disabled = false; button.textContent = "✨ Εξαγωγή asks"; }
+  }
 }
 
 function confidenceText(suggestion) {
