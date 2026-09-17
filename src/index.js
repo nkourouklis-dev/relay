@@ -98,8 +98,15 @@ function createAuth(env) {
           });
 
           if (!response.ok) {
+            console.log("Magic-link email rejected by Resend", { status: response.status });
             throw new Error("Magic-link email delivery failed.");
           }
+          // Χωρίς link/token: μόνο το Resend id και το domain παραλήπτη, για έλεγχο παράδοσης.
+          const sent = await response.json().catch(() => ({}));
+          console.log("Magic-link email accepted by Resend", {
+            resend_id: sent.id || "",
+            recipient_domain: String(email).split("@")[1] || "",
+          });
         },
       }),
     ],
