@@ -7,6 +7,7 @@ import { betterAuth } from "better-auth";
 import { emailOTP } from "better-auth/plugins";
 import { APIError, createAuthEndpoint, createAuthMiddleware } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
+import { normalizeCaptureText, nextOccurrence, runMasterTaskImport } from "./master-task-import.js";
 
 // ---------- Επιτρεπτά emails (Φάση 1) ----------
 // ALLOWED_EMAIL_DOMAIN: π.χ. "kafkas.gr". ALLOWED_EMAILS: ρητές εξαιρέσεις, comma-separated.
@@ -24,6 +25,22 @@ function isEmailAllowed(env, email) {
 
   const domain = String(env.ALLOWED_EMAIL_DOMAIN || "").trim().toLowerCase().replace(/^@/, "");
   return !!domain && parts[1] === domain;
+}
+
+// Μέλη project (πρόσκληση) μπορούν να κάνουν login ακόμα κι εκτός domain.
+async function isProjectMemberEmail(env, email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  if (!normalized) return false;
+  try {
+    return !!(await env.DB.prepare("SELECT 1 AS ok FROM relay_project_members WHERE email = ? LIMIT 1")
+      .bind(normalized).first());
+  } catch {
+    return false; // πίνακας χωρίς migration ακόμα
+  }
+}
+
+async function isLoginAllowed(env, email) {
+  return isEmailAllowed(env, email) || (await isProjectMemberEmail(env, email));
 }
 
 function emailNotAllowedMessage(env) {
@@ -73,13 +90,13 @@ function createAuth(env) {
           if (ctx.body?.type !== "sign-in") {
             throw new APIError("BAD_REQUEST", { message: "Μη υποστηριζόμενη ενέργεια." });
           }
-          if (!isEmailAllowed(env, ctx.body?.email)) {
+          if (!(await isLoginAllowed(env, ctx.body?.email))) {
             throw new APIError("FORBIDDEN", { message: emailNotAllowedMessage(env) });
           }
           return;
         }
         if (ctx.path === "/sign-in/email-otp") {
-          if (!isEmailAllowed(env, ctx.body?.email)) {
+          if (!(await isLoginAllowed(env, ctx.body?.email))) {
             throw new APIError("FORBIDDEN", { message: emailNotAllowedMessage(env) });
           }
           return;
@@ -98,7 +115,7 @@ function createAuth(env) {
       user: {
         create: {
           before: async (user) => {
-            if (!isEmailAllowed(env, user.email)) {
+            if (!(await isLoginAllowed(env, user.email))) {
               throw new APIError("FORBIDDEN", { message: emailNotAllowedMessage(env) });
             }
             return { data: { ...user, role: "user" } };
@@ -159,7 +176,7 @@ function trustedDevicePlugin(env) {
     endpoints: {
       deviceSignIn: createAuthEndpoint("/device-sign-in", { method: "POST" }, async (ctx) => {
         const email = String(ctx.body?.email || "").trim().toLowerCase();
-        if (!isEmailAllowed(env, email)) {
+        if (!(await isLoginAllowed(env, email))) {
           throw new APIError("FORBIDDEN", { message: emailNotAllowedMessage(env) });
         }
         const token = ctx.getCookie(TRUSTED_DEVICE_COOKIE);
@@ -323,18 +340,21 @@ async function requireSession(env, request) {
   if (!session) return json({ error: "Authentication required" }, 401);
   if (isLocalDevelopment(request)) {
     await ensureDevelopmentUser(env);
-  } else if (!isEmailAllowed(env, session.user?.email)) {
+  } else if (!(await isLoginAllowed(env, session.user?.email))) {
     return json({ error: emailNotAllowedMessage(env) }, 403);
   }
   return session;
 }
 
-// ---------- Permissions (Φάση 1) ----------
-// admin: βλέπει/επεξεργάζεται τα πάντα. user: μόνο ό,τι έχει created_by_user_id = ο ίδιος.
+// ---------- Permissions ----------
+// admin: τα πάντα.
+// user: projects που δημιούργησε ή στα οποία είναι μέλος· μέσα σε αυτά βλέπει όλα τα asks και
+// αλλάζει status (Accept/Done). Επεξεργασία/διαγραφή ask: ο δημιουργός του ask, ο δημιουργός
+// του project ή admin. Διαχείριση project (μέλη, import, διαγραφή): δημιουργός ή admin.
 function getActor(session) {
   return {
     id: session.user.id,
-    email: session.user.email || "",
+    email: String(session.user.email || "").toLowerCase(),
     role: session.user.role === "admin" ? "admin" : "user",
   };
 }
@@ -343,29 +363,409 @@ function isAdmin(actor) {
   return actor.role === "admin";
 }
 
-function canAccess(actor, row) {
-  if (!row) return false;
-  return isAdmin(actor) || (!!row.created_by_user_id && row.created_by_user_id === actor.id);
+function canManageProject(actor, project) {
+  return !!project && (isAdmin(actor) || (!!project.created_by_user_id && project.created_by_user_id === actor.id));
 }
 
-// Για queries στα asks: επιστρέφει επιπλέον WHERE clause για non-admin.
+async function isProjectMember(env, projectId, actor) {
+  if (!actor.email || !projectId) return false;
+  try {
+    return !!(await env.DB.prepare("SELECT 1 AS ok FROM relay_project_members WHERE project_id = ? AND email = ?")
+      .bind(projectId, actor.email).first());
+  } catch {
+    return false;
+  }
+}
+
+// Για queries στα asks χωρίς συγκεκριμένο project.
 function askScope(actor) {
   return isAdmin(actor)
     ? { sql: "", binds: [] }
-    : { sql: " AND created_by_user_id = ?", binds: [actor.id] };
+    : {
+        sql: " AND (created_by_user_id = ? OR project_id IN (SELECT id FROM projects WHERE created_by_user_id = ?)" +
+          " OR project_id IN (SELECT project_id FROM relay_project_members WHERE email = ?))",
+        binds: [actor.id, actor.id, actor.email],
+      };
 }
 
 async function getAccessibleProject(env, actor, projectId) {
   if (!projectId) return null;
   const project = await getProjectById(env, projectId);
-  return canAccess(actor, project) ? project : null;
+  if (!project) return null;
+  if (canManageProject(actor, project) || (await isProjectMember(env, project.id, actor))) return project;
+  return null;
 }
 
-async function getAccessibleAsk(env, actor, askId) {
+// { ask, canView, canManage } — canView: μέλος/owner project· canManage: δημιουργός ask/project ή admin.
+async function getAskAccess(env, actor, askId) {
   const ask = await env.DB.prepare(
     "SELECT id, project_id, created_by_user_id FROM asks WHERE id = ?"
   ).bind(askId).first();
-  return canAccess(actor, ask) ? ask : null;
+  if (!ask) return { ask: null, canView: false, canManage: false };
+  if (isAdmin(actor) || (ask.created_by_user_id && ask.created_by_user_id === actor.id)) {
+    return { ask, canView: true, canManage: true };
+  }
+  const project = await getProjectById(env, ask.project_id);
+  if (canManageProject(actor, project)) return { ask, canView: true, canManage: true };
+  const member = await isProjectMember(env, ask.project_id, actor);
+  return { ask, canView: member, canManage: false };
+}
+
+async function annotateAskPermissions(env, actor, rows) {
+  if (!rows.length) return rows;
+  const { results } = await env.DB.prepare("SELECT id, created_by_user_id FROM projects").all();
+  const projectOwners = new Map((results || []).map((p) => [p.id, p.created_by_user_id]));
+  return rows.map((row) => ({
+    ...row,
+    can_manage: isAdmin(actor) ||
+      (!!row.created_by_user_id && row.created_by_user_id === actor.id) ||
+      (!!projectOwners.get(row.project_id) && projectOwners.get(row.project_id) === actor.id),
+  }));
+}
+
+// ---------- Project members ----------
+const MEMBER_EMAIL_PATTERN = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]{2,}$/;
+const MAX_MEMBERS_PER_REQUEST = 50;
+
+// Comma/semicolon/newline separated λίστα emails -> { valid, invalid } (lowercase, χωρίς διπλότυπα).
+function parseEmailList(value) {
+  const valid = [];
+  const invalid = [];
+  const seen = new Set();
+  for (const raw of String(value || "").split(/[,;\s]+/)) {
+    const email = raw.trim().replace(/^<|>$/g, "").toLowerCase();
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+    (MEMBER_EMAIL_PATTERN.test(email) ? valid : invalid).push(email);
+  }
+  return { valid, invalid };
+}
+
+function escapeHtml(value) {
+  return String(value || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c]);
+}
+
+// Γενική αποστολή email μέσω Resend. Δεν πετάει exception· καταγράφει μόνο status/id.
+async function sendAppEmail(env, { to, subject, text, html, kind }) {
+  if (!env.RESEND_API_KEY || !env.AUTH_EMAIL_FROM) {
+    console.log(`${kind} email not sent: email delivery is not configured`);
+    return { ok: false, error: "not_configured" };
+  }
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: env.AUTH_EMAIL_FROM, to, subject, text, html }),
+    });
+    if (!response.ok) {
+      console.log(`${kind} email rejected by Resend`, { status: response.status });
+      return { ok: false, error: `resend_${response.status}` };
+    }
+    const sent = await response.json().catch(() => ({}));
+    console.log(`${kind} email accepted by Resend`, { resend_id: sent.id || "", recipients: to.length });
+    return { ok: true, id: sent.id || "" };
+  } catch (error) {
+    console.log(`${kind} email failed`, { error: String(error && error.message || error) });
+    return { ok: false, error: "network" };
+  }
+}
+
+async function sendProjectInviteEmail(env, { email, project, inviterEmail }) {
+  const appUrl = env.BETTER_AUTH_URL || "";
+  const name = project.name;
+  return sendAppEmail(env, {
+    kind: "Project invite",
+    to: [email],
+    subject: `Πρόσκληση στο project «${name}» στο Relay`,
+    text:
+      `${inviterEmail || "Ένας συνάδελφος"} σε πρόσθεσε στην ομάδα του project «${name}» στο Relay.\n\n` +
+      `Άνοιξε το Relay: ${appUrl}\n` +
+      `Σύνδεση με αυτό το email (${email}). Θα σου σταλεί κωδικός 6 ψηφίων την πρώτη φορά.`,
+    html:
+      `<p>${escapeHtml(inviterEmail || "Ένας συνάδελφος")} σε πρόσθεσε στην ομάδα του project <b>«${escapeHtml(name)}»</b> στο Relay.</p>` +
+      `<p><a href="${escapeHtml(appUrl)}">Άνοιξε το Relay</a></p>` +
+      `<p>Σύνδεση με αυτό το email (${escapeHtml(email)}). Θα σου σταλεί κωδικός 6 ψηφίων την πρώτη φορά.</p>`,
+  });
+}
+
+// ---------- Master Task List import: D1 store ----------
+const IMPORT_FIELD_COLUMNS = {
+  title: "title", section: "section", owner: "owner", assignees: "assignees", accountable: "accountable",
+  status: "status", sourceStatus: "source_status", priority: "priority", startDate: "start_date",
+  dueDate: "due_date", dueConstraint: "due_constraint", goLiveBlocking: "go_live_blocking", details: "details_json",
+};
+
+function parseJsonObject(value) {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function importColumnValue(field, value) {
+  if (field === "details") return JSON.stringify(value || {});
+  if (field === "dueDate" || field === "startDate") return value ? value : null;
+  return value === undefined ? null : value;
+}
+
+function mapImportedAsk(row) {
+  const details = parseJsonObject(row.details_json);
+  delete details.reminderPolicy;
+  return {
+    id: row.id,
+    title: row.title || "",
+    section: row.section || "",
+    owner: row.owner || "",
+    assignees: row.assignees || "",
+    accountable: row.accountable || "",
+    status: row.status === "overdue" ? "open" : row.status,
+    sourceStatus: row.source_status || "",
+    priority: row.priority ?? null,
+    startDate: row.start_date || "",
+    dueDate: row.due_date || "",
+    dueConstraint: row.due_constraint || "",
+    goLiveBlocking: row.go_live_blocking ?? null,
+    details,
+    importSnapshot: parseJsonObject(row.import_snapshot_json),
+  };
+}
+
+function createD1ImportStore(env, { projectId, actor }) {
+  let pending = [];
+  let rollbacks = [];
+  let tasks = null;
+  let captures = null;
+  let dependencies = null;
+  let reminders = null;
+  let pendingRemindersByAsk = null;
+
+  const loadAll = async () => {
+    if (tasks) return;
+    const [taskRows, captureRows, dependencyRows, reminderRows] = await env.DB.batch([
+      env.DB.prepare("SELECT * FROM asks WHERE project_id = ? AND external_import_key IS NOT NULL").bind(projectId),
+      env.DB.prepare("SELECT id, subject FROM sources WHERE project_id = ? AND type = 'import'").bind(projectId),
+      env.DB.prepare(
+        "SELECT d.ask_id, d.depends_on_ask_id FROM relay_ask_dependencies d JOIN asks a ON a.id = d.ask_id WHERE a.project_id = ?"
+      ).bind(projectId),
+      env.DB.prepare("SELECT dedupe_key, ask_id, status FROM relay_reminders WHERE project_id = ?").bind(projectId),
+    ]);
+    tasks = new Map((taskRows.results || []).map((row) => [row.external_import_key, mapImportedAsk(row)]));
+    captures = new Map((captureRows.results || []).map((row) => [row.subject, row.id]));
+    dependencies = new Set((dependencyRows.results || []).map((row) => `${row.ask_id}->${row.depends_on_ask_id}`));
+    reminders = new Set((reminderRows.results || []).map((row) => row.dedupe_key));
+    pendingRemindersByAsk = new Map();
+    for (const row of reminderRows.results || []) {
+      if (row.status === "pending") pendingRemindersByAsk.set(row.ask_id, (pendingRemindersByAsk.get(row.ask_id) || 0) + 1);
+    }
+  };
+
+  return {
+    async upsertCapture({ title, body }) {
+      await loadAll();
+      const existing = captures.get(title);
+      if (existing) {
+        pending.push(env.DB.prepare("UPDATE sources SET body = ? WHERE id = ?").bind(body, existing));
+        return { id: existing, created: false };
+      }
+      const id = uid();
+      pending.push(
+        env.DB.prepare("INSERT INTO sources (id, project_id, type, sender, subject, body) VALUES (?, ?, 'import', ?, ?, ?)")
+          .bind(id, projectId, actor.email, title, body)
+      );
+      captures.set(title, id);
+      rollbacks.push(() => captures.delete(title));
+      return { id, created: true };
+    },
+
+    async findTaskByKey(_projectId, importKey) {
+      await loadAll();
+      return tasks.get(importKey) || null;
+    },
+
+    async insertTask({ record, snapshot }) {
+      await loadAll();
+      const id = uid();
+      pending.push(env.DB.prepare(
+        `INSERT INTO asks (id, project_id, source_id, kind, title, owner, requested_by, due_date, status, source_quote,
+           created_by, created_by_user_id, priority, source_status, section, start_date, due_constraint, go_live_blocking,
+           assignees, accountable, external_import_key, import_batch_id, details_json, import_snapshot_json)
+         VALUES (?, ?, ?, 'action', ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        id, projectId, record.captureId, record.title, record.owner, importColumnValue("dueDate", record.dueDate),
+        record.status, record.quote, actor.email, actor.id, record.priority, record.sourceStatus, record.section,
+        importColumnValue("startDate", record.startDate), record.dueConstraint, record.goLiveBlocking, record.assignees,
+        record.accountable, record.importKey, record.importBatchId, JSON.stringify(record.details || {}), JSON.stringify(snapshot)
+      ));
+      pending.push(env.DB.prepare("INSERT INTO events (id, ask_id, type, note) VALUES (?, ?, 'created', 'master task import')").bind(uid(), id));
+      const mapped = { ...record, id, importSnapshot: snapshot };
+      tasks.set(record.importKey, mapped);
+      rollbacks.push(() => tasks.delete(record.importKey));
+      return id;
+    },
+
+    async updateTask({ id, updates, snapshot, importBatchId }) {
+      const sets = [];
+      const binds = [];
+      for (const [field, value] of Object.entries(updates)) {
+        sets.push(`${IMPORT_FIELD_COLUMNS[field]} = ?`);
+        binds.push(importColumnValue(field, value));
+      }
+      sets.push("import_snapshot_json = ?", "import_batch_id = ?");
+      binds.push(JSON.stringify(snapshot), importBatchId);
+      pending.push(env.DB.prepare(`UPDATE asks SET ${sets.join(", ")} WHERE id = ?`).bind(...binds, id));
+      if (Object.keys(updates).length) {
+        pending.push(env.DB.prepare("INSERT INTO events (id, ask_id, type, note) VALUES (?, ?, 'updated', 'master task re-import')").bind(uid(), id));
+      }
+    },
+
+    async addDependency({ askId, dependsOnAskId, source }) {
+      await loadAll();
+      const key = `${askId}->${dependsOnAskId}`;
+      if (dependencies.has(key)) return false;
+      pending.push(env.DB.prepare(
+        "INSERT OR IGNORE INTO relay_ask_dependencies (id, ask_id, depends_on_ask_id, source, created_at) VALUES (?, ?, ?, ?, ?)"
+      ).bind(uid(), askId, dependsOnAskId, source, new Date().toISOString()));
+      dependencies.add(key);
+      rollbacks.push(() => dependencies.delete(key));
+      return true;
+    },
+
+    async upsertReminder({ askId, remindAt, rule, recurrence, dedupeKey }) {
+      await loadAll();
+      if (reminders.has(dedupeKey)) return false;
+      pending.push(env.DB.prepare(
+        `INSERT OR IGNORE INTO relay_reminders (id, ask_id, project_id, remind_at, rule, recurrence, dedupe_key, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
+      ).bind(uid(), askId, projectId, remindAt, rule, recurrence, dedupeKey, new Date().toISOString()));
+      reminders.add(dedupeKey);
+      rollbacks.push(() => reminders.delete(dedupeKey));
+      return true;
+    },
+
+    async cancelPendingReminders({ askId }) {
+      await loadAll();
+      const count = pendingRemindersByAsk.get(askId) || 0;
+      if (count) {
+        pending.push(env.DB.prepare("UPDATE relay_reminders SET status = 'cancelled' WHERE ask_id = ? AND status = 'pending'").bind(askId));
+        pendingRemindersByAsk.set(askId, 0);
+      }
+      return count;
+    },
+
+    async setReminderPolicy({ askId, policy }) {
+      pending.push(env.DB.prepare(
+        "UPDATE asks SET details_json = json_set(COALESCE(details_json, '{}'), '$.reminderPolicy', json(?)) WHERE id = ?"
+      ).bind(JSON.stringify(policy), askId));
+    },
+
+    // D1 batch = μία ατομική συναλλαγή: είτε γράφονται όλα του βήματος είτε κανένα.
+    async flush() {
+      const statements = pending;
+      const undo = rollbacks;
+      pending = [];
+      rollbacks = [];
+      try {
+        for (let i = 0; i < statements.length; i += 100) await env.DB.batch(statements.slice(i, i + 100));
+      } catch (error) {
+        for (const fn of undo.reverse()) fn();
+        throw error;
+      }
+    },
+
+    discard() {
+      for (const fn of rollbacks.reverse()) fn();
+      pending = [];
+      rollbacks = [];
+    },
+  };
+}
+
+// ---------- Reminder dispatch (cron) ----------
+function reminderLine(row, todayStr) {
+  const priority = row.priority ? `[${row.priority.toUpperCase()}] ` : "";
+  const due = row.due_date
+    ? `λήξη ${row.due_date}${row.due_date < todayStr ? " (ΚΑΘΥΣΤΕΡΕΙ)" : ""}`
+    : row.due_constraint ? `προθεσμία: ${row.due_constraint}` : "χωρίς προθεσμία";
+  const status = row.source_status || row.status;
+  const owner = row.owner ? ` · Owner: ${row.owner}` : "";
+  return `• ${priority}${row.title} — ${due} · Status: ${status}${owner}`;
+}
+
+async function dispatchDueReminders(env, now = new Date()) {
+  const { results } = await env.DB.prepare(
+    `SELECT r.id, r.ask_id, r.project_id, r.rule, r.recurrence, a.title, a.status, a.priority, a.due_date,
+            a.due_constraint, a.source_status, a.owner, p.name AS project_name, p.created_by_user_id
+     FROM relay_reminders r
+     JOIN asks a ON a.id = r.ask_id
+     JOIN projects p ON p.id = r.project_id
+     WHERE r.status = 'pending' AND r.remind_at <= ?
+     ORDER BY r.project_id, a.priority, r.remind_at
+     LIMIT 300`
+  ).bind(now.toISOString()).all();
+  const rows = results || [];
+  if (!rows.length) return { projects: 0, sent: 0 };
+
+  const todayStr = now.toISOString().slice(0, 10);
+  const byProject = new Map();
+  for (const row of rows) {
+    if (!byProject.has(row.project_id)) byProject.set(row.project_id, []);
+    byProject.get(row.project_id).push(row);
+  }
+
+  let sent = 0;
+  for (const [projectId, projectRows] of byProject) {
+    const statements = [];
+    const nowIso = now.toISOString();
+    const active = projectRows.filter((row) => row.status !== "done");
+    for (const row of projectRows.filter((r) => r.status === "done")) {
+      statements.push(env.DB.prepare("UPDATE relay_reminders SET status = 'cancelled' WHERE id = ?").bind(row.id));
+    }
+
+    if (active.length) {
+      const { results: recipientRows } = await env.DB.prepare(
+        `SELECT lower(email) AS email FROM relay_users WHERE id = ?
+         UNION SELECT email FROM relay_project_members WHERE project_id = ?`
+      ).bind(projectRows[0].created_by_user_id || "", projectId).all();
+      const recipients = [...new Set((recipientRows || []).map((r) => r.email).filter(Boolean))];
+
+      let delivered = false;
+      if (recipients.length) {
+        const unique = [...new Map(active.map((row) => [row.ask_id, row])).values()];
+        const result = await sendAppEmail(env, {
+          kind: "Reminder digest",
+          to: recipients,
+          subject: `Relay — Υπενθυμίσεις: ${unique.length} ενέργειες (${projectRows[0].project_name})`,
+          text:
+            `Υπενθυμίσεις για το project «${projectRows[0].project_name}»:\n\n` +
+            unique.map((row) => reminderLine(row, todayStr)).join("\n") +
+            `\n\nΆνοιξε το Relay: ${env.BETTER_AUTH_URL || ""}`,
+          html:
+            `<p>Υπενθυμίσεις για το project <b>«${escapeHtml(projectRows[0].project_name)}»</b>:</p><ul>` +
+            unique.map((row) => `<li>${escapeHtml(reminderLine(row, todayStr).slice(2))}</li>`).join("") +
+            `</ul><p><a href="${escapeHtml(env.BETTER_AUTH_URL || "")}">Άνοιξε το Relay</a></p>`,
+        });
+        delivered = result.ok;
+        if (delivered) sent += unique.length;
+      } else {
+        console.log("Reminder digest skipped: project has no recipients", { project_id: projectId });
+        delivered = true; // δεν υπάρχει παραλήπτης: προχωράμε το schedule για να μη συσσωρεύονται
+      }
+      if (!delivered) {
+        if (statements.length) await env.DB.batch(statements);
+        continue; // θα ξαναδοκιμαστεί στο επόμενο cron
+      }
+      for (const row of active) {
+        const next = row.recurrence ? nextOccurrence(row.recurrence, now, { afterSend: true }) : null;
+        statements.push(next
+          ? env.DB.prepare("UPDATE relay_reminders SET remind_at = ?, last_sent_at = ? WHERE id = ?").bind(next.toISOString(), nowIso, row.id)
+          : env.DB.prepare("UPDATE relay_reminders SET status = 'sent', last_sent_at = ? WHERE id = ?").bind(nowIso, row.id));
+      }
+    }
+    if (statements.length) await env.DB.batch(statements);
+  }
+  return { projects: byProject.size, sent };
 }
 
 function slugify(name) {
@@ -764,8 +1164,11 @@ async function deleteProject(env, projectId) {
 }
 
 // ---------- Ingest (capture) ----------
-function validateCaptureBody(body) {
-  if (typeof body !== "string" || !body.trim()) {
+function validateCaptureBody(input) {
+  // Ίδια κανονικοποίηση με το import: HTML/Outlook/Teams -> plain text, ώστε π.χ. ένα σκέτο
+  // <br aria-hidden="true"> να θεωρείται κενό και όχι έγκυρο κείμενο.
+  const body = normalizeCaptureText(input);
+  if (!body) {
     throw new Error("Επικόλλησε κείμενο για ανάλυση.");
   }
   if (body.length > MAX_CAPTURE_CHARS) {
@@ -1121,7 +1524,7 @@ export default {
       // Υπάρχοντα sessions λογαριασμών εκτός επιτρεπτού domain -> το UI τα βλέπει ως αποσυνδεδεμένα.
       if (path === "/api/auth/get-session") {
         const existing = await getSession(env, request);
-        if (existing && !isEmailAllowed(env, existing.user?.email)) return json(null);
+        if (existing && !(await isLoginAllowed(env, existing.user?.email))) return json(null);
       }
       return createAuth(env).handler(request);
     }
@@ -1152,9 +1555,129 @@ export default {
               "SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects ORDER BY created_at"
             ).all()
           : await env.DB.prepare(
-              "SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects WHERE created_by_user_id = ? ORDER BY created_at"
-            ).bind(actor.id).all();
-        return json(results || []);
+              `SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects
+               WHERE created_by_user_id = ? OR id IN (SELECT project_id FROM relay_project_members WHERE email = ?)
+               ORDER BY created_at`
+            ).bind(actor.id, actor.email).all();
+        return json((results || []).map((project) => ({ ...project, can_manage: canManageProject(actor, project) })));
+      }
+
+      // --- Project members: λίστα ---
+      const membersMatch = path.match(/^\/api\/projects\/([^/]+)\/members$/);
+      if (membersMatch && request.method === "GET") {
+        const project = await getAccessibleProject(env, actor, membersMatch[1]);
+        if (!project) return json({ error: "Το project δεν βρέθηκε" }, 404);
+        const { results } = await env.DB.prepare(
+          "SELECT email, invite_status, invited_at FROM relay_project_members WHERE project_id = ? ORDER BY email"
+        ).bind(project.id).all();
+        const owner = project.created_by_user_id
+          ? await env.DB.prepare("SELECT email FROM relay_users WHERE id = ?").bind(project.created_by_user_id).first()
+          : null;
+        return json({
+          project_id: project.id,
+          owner_email: owner ? String(owner.email).toLowerCase() : "",
+          can_manage: canManageProject(actor, project),
+          members: results || [],
+        });
+      }
+
+      // --- Project members: προσθήκη (comma-separated) + πρόσκληση ---
+      if (membersMatch && request.method === "POST") {
+        const project = await getAccessibleProject(env, actor, membersMatch[1]);
+        if (!project) return json({ error: "Το project δεν βρέθηκε" }, 404);
+        if (!canManageProject(actor, project)) {
+          return json({ error: "Μόνο ο δημιουργός του project ή admin προσθέτει μέλη." }, 403);
+        }
+        const b = await request.json().catch(() => ({}));
+        const { valid, invalid } = parseEmailList(b.emails);
+        if (!valid.length) {
+          return json({ error: "Γράψε ένα ή περισσότερα emails χωρισμένα με κόμμα.", invalid }, 400);
+        }
+        if (valid.length > MAX_MEMBERS_PER_REQUEST) {
+          return json({ error: `Έως ${MAX_MEMBERS_PER_REQUEST} emails ανά προσθήκη.` }, 400);
+        }
+        const result = { added: [], already_members: [], invalid, not_allowed: [], invite_failed: [] };
+        for (const email of valid) {
+          // Εξωτερικά emails (εκτός domain/εξαιρέσεων) αποκτούν πρόσβαση login μέσω του project: μόνο admin.
+          if (!isEmailAllowed(env, email) && !isAdmin(actor)) {
+            result.not_allowed.push(email);
+            continue;
+          }
+          const insert = await env.DB.prepare(
+            `INSERT OR IGNORE INTO relay_project_members (id, project_id, email, invited_by_user_id, invited_at, invite_status)
+             VALUES (?, ?, ?, ?, ?, 'pending')`
+          ).bind(uid(), project.id, email, actor.id, new Date().toISOString()).run();
+          if (!insert.meta || !insert.meta.changes) {
+            result.already_members.push(email);
+            continue;
+          }
+          const sent = await sendProjectInviteEmail(env, { email, project, inviterEmail: actor.email });
+          await env.DB.prepare("UPDATE relay_project_members SET invite_status = ? WHERE project_id = ? AND email = ?")
+            .bind(sent.ok ? "sent" : "failed", project.id, email).run();
+          result.added.push(email);
+          if (!sent.ok) result.invite_failed.push(email);
+        }
+        return json(result);
+      }
+
+      // --- Project members: αφαίρεση ---
+      const memberDeleteMatch = path.match(/^\/api\/projects\/([^/]+)\/members\/([^/]+)$/);
+      if (memberDeleteMatch && request.method === "DELETE") {
+        const project = await getAccessibleProject(env, actor, memberDeleteMatch[1]);
+        if (!project) return json({ error: "Το project δεν βρέθηκε" }, 404);
+        if (!canManageProject(actor, project)) {
+          return json({ error: "Μόνο ο δημιουργός του project ή admin αφαιρεί μέλη." }, 403);
+        }
+        const email = decodeURIComponent(memberDeleteMatch[2]).trim().toLowerCase();
+        await env.DB.prepare("DELETE FROM relay_project_members WHERE project_id = ? AND email = ?").bind(project.id, email).run();
+        return json({ ok: true, email });
+      }
+
+      // --- Master Task List import (idempotent, πολλαπλά captures) ---
+      const importMatch = path.match(/^\/api\/projects\/([^/]+)\/import-master-tasks$/);
+      if (importMatch && request.method === "POST") {
+        const project = await getAccessibleProject(env, actor, importMatch[1]);
+        if (!project) return json({ error: "Το project δεν βρέθηκε" }, 404);
+        if (!canManageProject(actor, project)) {
+          return json({ error: "Μόνο ο δημιουργός του project ή admin κάνει import." }, 403);
+        }
+        const b = await request.json().catch(() => ({}));
+        let text = typeof b.text === "string" ? b.text : "";
+        if (!text.trim() && b.source === "previous") {
+          // Επανάληψη από τα ήδη αποθηκευμένα captures του import (π.χ. retry μετά από partial failure).
+          const { results } = await env.DB.prepare(
+            "SELECT body FROM sources WHERE project_id = ? AND type = 'import' ORDER BY subject"
+          ).bind(project.id).all();
+          text = (results || []).map((row) => row.body).join("\n\n");
+        }
+        if (text.length > 1000000) {
+          return json({ error: "Το Master Task List ξεπερνά το 1.000.000 χαρακτήρες." }, 413);
+        }
+        const { results: userRows } = await env.DB.prepare("SELECT lower(email) AS email FROM relay_users").all();
+        const store = createD1ImportStore(env, { projectId: project.id, actor });
+        let summary;
+        try {
+          summary = await runMasterTaskImport({
+            text,
+            projectId: project.id,
+            store,
+            now: new Date(),
+            knownEmails: (userRows || []).map((row) => row.email),
+          });
+        } catch (error) {
+          store.discard();
+          console.log("Master task import crashed", { project_id: project.id, error: String(error && error.message || error) });
+          return json({ status: "Failed", error: "Το import απέτυχε απρόσμενα. Δοκίμασε ξανά — είναι ασφαλές (idempotent)." }, 500);
+        }
+        console.log("Master task import finished", {
+          project_id: project.id,
+          batch: summary.importBatchId,
+          status: summary.status,
+          captures: summary.captures,
+          tasks: summary.tasks,
+          rejected_parts: summary.parts.filter((p) => p.status !== "ok").map((p) => ({ part: p.part, length: p.length, status: p.status })),
+        });
+        return json(summary, summary.status === "Failed" ? 422 : 200);
       }
 
       // --- Projects: δημιουργία ---
@@ -1171,8 +1694,12 @@ export default {
       // --- Projects: διαγραφή ---
       if (path.match(/^\/api\/projects\/[^/]+$/) && request.method === "DELETE") {
         const projectId = path.split("/")[3];
-        if (!(await getAccessibleProject(env, actor, projectId))) {
+        const project = await getAccessibleProject(env, actor, projectId);
+        if (!project) {
           return json({ error: "Το project δεν βρέθηκε" }, 404);
+        }
+        if (!canManageProject(actor, project)) {
+          return json({ error: "Μόνο ο δημιουργός του project ή admin μπορεί να το διαγράψει." }, 403);
         }
         try {
           await deleteProject(env, projectId);
@@ -1190,10 +1717,9 @@ export default {
           return json({ error: "Project not found" }, 404);
         }
 
-        const scope = askScope(actor);
         const { results } = await env.DB.prepare(
-          "SELECT * FROM asks WHERE project_id = ?" + scope.sql
-        ).bind(projectId, ...scope.binds).all();
+          "SELECT * FROM asks WHERE project_id = ?"
+        ).bind(projectId).all();
 
         return json(buildDashboard(results || [], todayStr));
       }
@@ -1207,9 +1733,8 @@ export default {
         if (!project) return json({ error: "Project not found" }, 404);
 
         const weekly = url.searchParams.get("range") === "week";
-        const scope = askScope(actor);
-        let query = "SELECT * FROM asks WHERE project_id = ?" + scope.sql;
-        let binds = [projectId, ...scope.binds];
+        let query = "SELECT * FROM asks WHERE project_id = ?";
+        let binds = [projectId];
         let window = null;
         if (weekly) {
           window = getWeeklySummaryWindow(todayStr);
@@ -1233,10 +1758,9 @@ export default {
         const project = await getAccessibleProject(env, actor, projectId);
         if (!project) return json({ error: "Project not found" }, 404);
 
-        const scope = askScope(actor);
         const { results } = await env.DB.prepare(
-          "SELECT * FROM asks WHERE project_id = ?" + scope.sql
-        ).bind(projectId, ...scope.binds).all();
+          "SELECT * FROM asks WHERE project_id = ?"
+        ).bind(projectId).all();
         const asks = withComputedOverdue(results || [], todayStr);
         return json(await buildAIInsights(env, project, asks, todayStr));
       }
@@ -1246,15 +1770,18 @@ export default {
         const projectId = url.searchParams.get("project_id");
         const status = url.searchParams.get("status");
 
-        const scope = askScope(actor);
-        let query = "SELECT * FROM asks WHERE 1=1" + scope.sql;
-        const binds = [...scope.binds];
+        let query = "SELECT * FROM asks WHERE 1=1";
+        const binds = [];
         if (projectId) {
           if (!(await getAccessibleProject(env, actor, projectId))) {
             return json({ error: "Project not found" }, 404);
           }
           query += " AND project_id = ?";
           binds.push(projectId);
+        } else {
+          const scope = askScope(actor);
+          query += scope.sql;
+          binds.push(...scope.binds);
         }
 
         if (status === "overdue") {
@@ -1269,7 +1796,7 @@ export default {
         let stmt = env.DB.prepare(query);
         if (binds.length) stmt = stmt.bind(...binds);
         const { results } = await stmt.all();
-        return json(withComputedOverdue(results || [], todayStr));
+        return json(await annotateAskPermissions(env, actor, withComputedOverdue(results || [], todayStr)));
       }
 
       // --- Asks: δημιουργία με το χέρι ---
@@ -1298,7 +1825,8 @@ export default {
         if (!["open", "accepted", "done"].includes(b.status)) {
           return json({ error: "Μη έγκυρο status" }, 400);
         }
-        if (!(await getAccessibleAsk(env, actor, askId))) {
+        const access = await getAskAccess(env, actor, askId);
+        if (!access.canView) {
           return json({ error: "Το ask δεν βρέθηκε" }, 404);
         }
         await env.DB.prepare("UPDATE asks SET status = ? WHERE id = ?")
@@ -1323,8 +1851,10 @@ export default {
         if (!title) return json({ error: "Το title είναι υποχρεωτικό" }, 400);
         if (!allowedStatuses.includes(status)) return json({ error: "Μη έγκυρο status" }, 400);
 
-        if (!(await getAccessibleAsk(env, actor, askId))) {
-          return json({ error: "Το ask δεν βρέθηκε" }, 404);
+        const access = await getAskAccess(env, actor, askId);
+        if (!access.canView) return json({ error: "Το ask δεν βρέθηκε" }, 404);
+        if (!access.canManage) {
+          return json({ error: "Επεξεργασία μόνο από τον δημιουργό του ask, τον δημιουργό του project ή admin." }, 403);
         }
 
         await env.DB.prepare(
@@ -1342,12 +1872,16 @@ export default {
       if (path.match(/^\/api\/asks\/[^/]+$/) && request.method === "DELETE") {
         const askId = path.split("/")[3];
 
-        if (!(await getAccessibleAsk(env, actor, askId))) {
-          return json({ error: "Το ask δεν βρέθηκε" }, 404);
+        const access = await getAskAccess(env, actor, askId);
+        if (!access.canView) return json({ error: "Το ask δεν βρέθηκε" }, 404);
+        if (!access.canManage) {
+          return json({ error: "Διαγραφή μόνο από τον δημιουργό του ask, τον δημιουργό του project ή admin." }, 403);
         }
 
         await env.DB.batch([
           env.DB.prepare("DELETE FROM events WHERE ask_id = ?").bind(askId),
+          env.DB.prepare("DELETE FROM relay_reminders WHERE ask_id = ?").bind(askId),
+          env.DB.prepare("DELETE FROM relay_ask_dependencies WHERE ask_id = ? OR depends_on_ask_id = ?").bind(askId, askId),
           env.DB.prepare("DELETE FROM asks WHERE id = ?").bind(askId),
         ]);
 
@@ -1438,14 +1972,23 @@ export default {
       type: "email",
       sender: message.from,
       subject: parsed.subject,
-      body: parsed.text || parsed.html || "",
+      body: parsed.text || normalizeCaptureText(parsed.html || ""),
       createdBy: message.from || "",
     });
   },
 
   async scheduled(event, env, ctx) {
+    if (event.cron === "0 8 * * *") {
+      ctx.waitUntil(
+        env.DB.prepare(`UPDATE asks SET status = 'open' WHERE status = 'overdue'`).run()
+      );
+      return;
+    }
+    // Υπενθυμίσεις (κάθε 15 λεπτά): ένα digest email ανά project σε δημιουργό + μέλη.
     ctx.waitUntil(
-      env.DB.prepare(`UPDATE asks SET status = 'open' WHERE status = 'overdue'`).run()
+      dispatchDueReminders(env, new Date()).catch((error) => {
+        console.log("Reminder dispatch failed", { error: String(error && error.message || error) });
+      })
     );
   },
 };

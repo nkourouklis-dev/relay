@@ -111,6 +111,33 @@
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
   .chip{font-size:12px;color:var(--grey);background:#f5f4fb;border-radius:8px;padding:3px 9px;white-space:nowrap}
   .chip b{color:var(--ink);font-weight:600}
+  .chip.warn{background:var(--amberbg);color:var(--amber)}
+  .pill.prio-critical{background:#fde8e8;color:#b42318;margin-right:6px}
+  .pill.prio-high{background:var(--amberbg);color:var(--amber);margin-right:6px}
+  .pill.prio-medium{background:var(--surface-soft);color:var(--v);margin-right:6px}
+  .pill.prio-low{background:#f1f5f9;color:var(--grey);margin-right:6px}
+  .pill.blocking{background:var(--redbg);color:var(--red);margin-left:6px}
+  .task-details{margin-top:8px;font-size:13px;color:var(--grey)}
+  .task-details summary{cursor:pointer;color:var(--v)}
+  .task-details p{margin:6px 0;white-space:pre-line}
+  .view-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
+  .view-bar label{font-size:13px;color:var(--grey)}
+  .view-bar select{min-width:230px}
+  .group-heading{margin:20px 0 8px;font-size:13px;color:var(--grey);text-transform:uppercase;letter-spacing:.06em}
+  .modal-card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow-md);width:min(680px,100%);max-height:calc(100vh - 40px);overflow:auto;padding:22px}
+  .modal-card h2{margin:0 0 6px;font-size:20px;color:var(--v)}
+  .modal-card textarea{min-height:110px;margin-top:8px}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
+  .member-list{list-style:none;padding:0;margin:12px 0;display:grid;gap:6px}
+  .member-list li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);font-size:14px;overflow-wrap:anywhere}
+  .member-list li small{color:var(--grey)}
+  .member-list button{min-height:34px;padding:4px 10px;font-size:12px}
+  .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:12px 0}
+  .summary-grid div{border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;font-size:12px;color:var(--grey)}
+  .summary-grid b{display:block;font-size:20px;color:var(--ink)}
+  .import-details{font-size:13px;color:var(--grey)}
+  .import-details li{margin:3px 0;overflow-wrap:anywhere}
+  .result-ok{color:var(--green)}.result-warn{color:var(--amber)}.result-error{color:var(--red)}
   .quote{color:#8a7fb5;font-size:12px;font-style:italic;margin-top:8px;padding:6px 10px;
          background:#faf8ff;border-left:2px solid #ddd6fe;border-radius:4px}
   .pill{font-size:11.5px;padding:5px 10px;border-radius:999px;white-space:nowrap;display:inline-block;font-weight:700}
@@ -235,6 +262,7 @@
   <select id="projectSelect" class="sidebar-project" aria-label="Current project"></select>
   <div class="sidebar-nav" style="margin-top:8px">
     <button type="button" onclick="createProject()"><span class="nav-icon">＋</span>New project</button>
+    <button type="button" onclick="openMembers()"><span class="nav-icon">👥</span>Ομάδα project</button>
     <button type="button" class="delete-project-action" onclick="deleteCurrentProject()"><span class="nav-icon">⌫</span>Delete project</button>
   </div>
   <div class="sidebar-spacer"></div>
@@ -264,6 +292,8 @@
   <div class="row">
     <label style="font-size:13px;color:var(--grey)">Project:</label>
     <button class="secondary" onclick="createProject()">+ Νέο project</button>
+    <button class="secondary" onclick="openMembers()">👥 Ομάδα project</button>
+    <button class="secondary project-manage-action" onclick="openImport()">📥 Import Master Task List</button>
     <button class="danger-outline delete-project-action" onclick="deleteCurrentProject()">🗑 Διαγραφή project</button>
   </div>
 
@@ -275,7 +305,21 @@
     <button data-f="__dashboard__">📊 Dashboard</button>
   </div>
   <div class="legend" id="tabsLegend">
-    ℹ️ Accept = ανάληψη ask · Done = ολοκληρώθηκε · 🔒 = επεξεργασία μόνο από τον δημιουργό
+    ℹ️ Accept = ανάληψη ask · Done = ολοκληρώθηκε · 🔒 = επεξεργασία μόνο από τον δημιουργό του ask/project ή admin
+  </div>
+  <div class="view-bar" id="viewBar">
+    <label for="viewSelect">Προβολή:</label>
+    <select id="viewSelect" aria-label="Προβολή εργασιών">
+      <option value="">Όλες οι εργασίες</option>
+      <option value="critical">Critical Path (Go-Live blocking)</option>
+      <option value="kafkas">KAFKAS Actions</option>
+      <option value="netcompany">Netcompany Actions</option>
+      <option value="waiting">Blocked &amp; Waiting</option>
+      <option value="overdue">Overdue</option>
+      <option value="next7">Due next 7 days</option>
+      <option value="readiness">Go-Live Readiness (ανά ενότητα)</option>
+      <option value="backlog">Release 1 Backlog</option>
+    </select>
   </div>
 
   <div id="dashboardView" style="display:none"></div>
@@ -338,8 +382,8 @@ function loadExample() {
 }
 
 function esc(s) {
-  return (s || "").replace(/[&<>"]/g, function(c) {
-    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function(c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
   });
 }
 
@@ -520,16 +564,17 @@ async function logout() {
   }
 }
 
-// Καθρεφτίζει τον server-side κανόνα (Φάση 1): admin ή created_by_user_id = ο τρέχων χρήστης.
-// Ο server ελέγχει ξανά σε κάθε request — αυτό αφορά μόνο το τι εμφανίζεται.
+// Καθρεφτίζει τον server-side κανόνα. Ο server ελέγχει ξανά σε κάθε request — αυτό αφορά μόνο το UI.
+// Asks/projects έρχονται με can_manage από τον server (δημιουργός ask/project ή admin).
 function canManage(record) {
   if (currentRole === "admin") return true;
+  if (record && typeof record.can_manage === "boolean") return record.can_manage;
   return !!(record && record.created_by_user_id && record.created_by_user_id === currentUserId);
 }
 
 function updateProjectActions() {
   const allowed = !!currentProject && canManage(projectsById[currentProject]);
-  document.querySelectorAll(".delete-project-action").forEach(function(button) {
+  document.querySelectorAll(".delete-project-action, .project-manage-action").forEach(function(button) {
     // style.display αντί για hidden: το .sidebar-nav button έχει display:flex που υπερισχύει του [hidden].
     button.style.display = allowed ? "" : "none";
   });
@@ -957,52 +1002,159 @@ async function load() {
   if (filter) params.set("status", filter);
 
   const response = await fetch("/api/asks?" + params.toString());
-  const asks = await response.json();
+  const allAsks = await response.json().catch(function() { return []; });
   const list = document.getElementById("list");
+  if (!Array.isArray(allAsks)) {
+    list.innerHTML = "<p style='color:#5a6472'>" + esc((allAsks && allAsks.error) || "Σφάλμα φόρτωσης.") + "</p>";
+    return;
+  }
+  asksById = {};
+  allAsks.forEach(function(ask) { asksById[ask.id] = ask; });
+
+  const view = VIEW_DEFS[currentView] || VIEW_DEFS[""];
+  const asks = view.filter ? allAsks.filter(view.filter) : allAsks;
 
   if (!asks.length) {
-    list.innerHTML = "<p style='color:#5a6472'>Κανένα ask.</p>";
+    list.innerHTML = "<p style='color:#5a6472'>Κανένα ask" + (currentView ? " σε αυτή την προβολή" : "") + ".</p>";
     return;
   }
 
-  list.innerHTML = asks.map(function(ask) {
-    const canEdit = canManage(ask);
-    const editDeleteButtons = canEdit
-      ? '<button class="edit-button" onclick=\'showEdit(' + JSON.stringify(ask) + ')\'>Edit</button>' +
-        '<button class="delete-button" onclick="deleteAsk(\'' + ask.id + '\')">Delete</button>'
-      : '<span class="locked-note">🔒 μόνο ο δημιουργός ή admin</span>';
+  if (view.group) {
+    const groups = {};
+    asks.forEach(function(ask) {
+      const key = readinessGroup(ask);
+      (groups[key] = groups[key] || []).push(ask);
+    });
+    list.innerHTML = READINESS_GROUPS.concat(["Άλλα"]).filter(function(key) { return groups[key]; }).map(function(key) {
+      const open = groups[key].filter(function(a) { return a.status !== "done"; }).length;
+      return '<h4 class="group-heading">' + esc(key) + ' · ' + open + ' ανοιχτά / ' + groups[key].length + '</h4>' +
+        groups[key].map(renderAskCard).join("");
+    }).join("");
+    return;
+  }
+  list.innerHTML = asks.map(renderAskCard).join("");
+}
 
-    const overdueBadge = ask.is_overdue
-      ? '<span class="pill overduebadge">⚠️ Καθυστερημένο</span>'
-      : "";
+let asksById = {};
+let currentView = "";
 
-    const cardClass = ask.is_overdue ? "st-overdue" : "st-" + ask.status;
+const READINESS_GROUPS = ["Governance", "UAT", "Defects", "Integrations", "Data", "Performance", "Security", "CMS", "Release", "Cutover", "HyperCare"];
+const READINESS_RULES = [
+  ["HyperCare", /hypercare|post-go-live|monitoring|release 1|backlog|operation/i],
+  ["Cutover", /cutover|go\s*\/\s*no-go|f5|go-live activation/i],
+  ["Release", /release|regression|smoke|deploy|code freeze/i],
+  ["CMS", /cms|content|search|categor|filter|marketing|report/i],
+  ["Security", /security/i],
+  ["Performance", /performance|load/i],
+  ["Data", /data|sync|import/i],
+  ["Integrations", /integration|sap|crm|pim|infrastructure|production|account|order|quote/i],
+  ["Defects", /defect/i],
+  ["UAT", /\buat\b|sign-?off/i],
+  ["Governance", /governance|control tower|business/i],
+];
 
-    return (
-      '<div class="card ' + cardClass + '" id="card-' + ask.id + '">' +
-        '<div style="flex:1">' +
-          '<div class="title">' + esc(ask.title) + '</div>' +
-          '<div class="chips">' +
-            '<span class="chip">👤 <b>' + esc(ask.owner || "—") + '</b></span>' +
-            '<span class="chip">📅 <b>' + (ask.due_date || "—") + '</b></span>' +
-            (ask.created_by ? '<span class="chip">✍️ ' + esc(ask.created_by) + '</span>' : "") +
+function readinessGroup(ask) {
+  const text = (ask.section || "") + " " + (ask.section ? "" : ask.title);
+  for (let i = 0; i < READINESS_RULES.length; i++) {
+    if (READINESS_RULES[i][1].test(text)) return READINESS_RULES[i][0];
+  }
+  return "Άλλα";
+}
+
+function askPeople(ask) {
+  return [ask.owner, ask.assignees, ask.accountable].filter(Boolean).join(" ");
+}
+
+function todayPlus(days) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+const VIEW_DEFS = {
+  "": {},
+  critical: { filter: function(a) { return a.go_live_blocking === "yes" && a.status !== "done"; } },
+  kafkas: { filter: function(a) { return /kafkas|nikolaos kourouklis|it ecommerce|business|\bsap\b|security|marketing|infrastructure|it operations/i.test(askPeople(a)); } },
+  netcompany: { filter: function(a) { return /netcompany|development|devops|\bqa\b|\bcms\b/i.test(askPeople(a)); } },
+  waiting: { filter: function(a) { return a.status !== "done" && /blocked|waiting|pending decision|pending clarification|pending eta|confirmation required/i.test(a.source_status || ""); } },
+  overdue: { filter: function(a) { return !!a.is_overdue; } },
+  next7: { filter: function(a) { return a.status !== "done" && !!a.due_date && a.due_date >= todayPlus(0) && a.due_date <= todayPlus(7); } },
+  readiness: { group: true },
+  backlog: { filter: function(a) { return /release 1|backlog/i.test((a.source_status || "") + " " + (a.section || "")); } },
+};
+
+function parseDetails(ask) {
+  try {
+    const details = JSON.parse(ask.details_json || "{}");
+    return details && typeof details === "object" ? details : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+const PRIORITY_LABELS = { critical: "Critical", high: "High", medium: "Medium", low: "Low" };
+
+function renderAskCard(ask) {
+  const canEdit = canManage(ask);
+  const editDeleteButtons = canEdit
+    ? '<button class="edit-button" onclick="showEdit(\'' + esc(ask.id) + '\')">Edit</button>' +
+      '<button class="delete-button" onclick="deleteAsk(\'' + esc(ask.id) + '\')">Delete</button>'
+    : '<span class="locked-note">🔒 μόνο δημιουργός ή admin</span>';
+
+  const overdueBadge = ask.is_overdue ? '<span class="pill overduebadge">⚠️ Καθυστερημένο</span>' : "";
+  const blockingBadge = ask.go_live_blocking === "yes"
+    ? '<span class="pill blocking">⛔ Go-Live blocking</span>'
+    : ask.go_live_blocking === "potential" ? '<span class="pill blocking">⚠️ Πιθανό blocking</span>' : "";
+  const priorityPill = PRIORITY_LABELS[ask.priority]
+    ? '<span class="pill prio-' + ask.priority + '">' + PRIORITY_LABELS[ask.priority] + '</span>' : "";
+  const cardClass = ask.is_overdue ? "st-overdue" : "st-" + esc(ask.status);
+  const details = parseDetails(ask);
+  const due = ask.due_date ? esc(ask.due_date) : ask.due_constraint ? esc(ask.due_constraint) : "—";
+  const detailLines = [
+    ["Acceptance criteria", details.acceptanceCriteria],
+    ["Εξαρτήσεις (πηγή)", details.dependenciesText],
+    ["Σημειώσεις", details.notes],
+    ["Reference", details.reference],
+    ["Υπενθυμίσεις", Array.isArray(details.reminderPolicy) ? details.reminderPolicy.join("\n") : details.remindersText],
+    ["Προθεσμία έναρξης", details.startConstraint],
+    ["Πηγή (Master Task List)", ask.external_import_key ? ask.source_quote : ""],
+  ].filter(function(line) { return line[1]; });
+
+  return (
+    '<div class="card ' + cardClass + '" id="card-' + esc(ask.id) + '">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div class="title">' + esc(ask.title) + '</div>' +
+        '<div class="chips">' +
+          '<span class="chip">👤 <b>' + esc(ask.owner || "—") + '</b></span>' +
+          (ask.assignees ? '<span class="chip">👥 ' + esc(ask.assignees) + '</span>' : "") +
+          (ask.accountable ? '<span class="chip">🎯 ' + esc(ask.accountable) + '</span>' : "") +
+          '<span class="chip">📅 <b>' + due + '</b></span>' +
+          (ask.start_date ? '<span class="chip">▶️ ' + esc(ask.start_date) + '</span>' : "") +
+          (ask.section ? '<span class="chip">🗂 ' + esc(ask.section) + '</span>' : "") +
+          (ask.source_status ? '<span class="chip">⏳ ' + esc(ask.source_status) + '</span>' : "") +
+          (details.assignmentResolutionRequired ? '<span class="chip warn">🧩 Χρειάζεται ανάθεση σε λογαριασμό</span>' : "") +
+          (ask.created_by && !ask.external_import_key ? '<span class="chip">✍️ ' + esc(ask.created_by) + '</span>' : "") +
+        '</div>' +
+        (detailLines.length
+          ? '<details class="task-details"><summary>Λεπτομέρειες</summary>' +
+            detailLines.map(function(line) { return '<p><b>' + esc(line[0]) + ':</b> ' + esc(line[1]) + '</p>'; }).join("") +
+            '</details>'
+          : (ask.source_quote ? '<div class="quote">“' + esc(ask.source_quote) + '”</div>' : "")) +
+      '</div>' +
+      '<div style="text-align:right;min-width:150px">' +
+        priorityPill +
+        '<span class="pill ' + esc(ask.status) + '">' + esc(ask.status) + '</span>' +
+        overdueBadge + blockingBadge +
+        '<details class="action-menu"><summary aria-label="Ask actions" title="Ask actions">⋯</summary>' +
+          '<div class="action-menu-content">' +
+            '<button title="Ανάληψη ask" onclick="setStatus(\'' + esc(ask.id) + '\',\'accepted\')">Accept</button>' +
+            '<button title="Ολοκληρώθηκε" onclick="setStatus(\'' + esc(ask.id) + '\',\'done\')">Done</button>' +
+            editDeleteButtons +
           '</div>' +
-          (ask.source_quote ? '<div class="quote">“' + esc(ask.source_quote) + '”</div>' : "") +
-        '</div>' +
-        '<div style="text-align:right;min-width:150px">' +
-          '<span class="pill ' + ask.status + '">' + ask.status + '</span>' +
-          overdueBadge +
-          '<details class="action-menu"><summary aria-label="Ask actions" title="Ask actions">⋯</summary>' +
-            '<div class="action-menu-content">' +
-              '<button title="Ανάληψη ask" onclick="setStatus(\'' + ask.id + '\',\'accepted\')">Accept</button>' +
-              '<button title="Ολοκληρώθηκε" onclick="setStatus(\'' + ask.id + '\',\'done\')">Done</button>' +
-              editDeleteButtons +
-            '</div>' +
-          '</details>' +
-        '</div>' +
-      '</div>'
-    );
-  }).join("");
+        '</details>' +
+      '</div>' +
+    '</div>'
+  );
 }
 
 async function setStatus(id, status) {
@@ -1189,7 +1341,9 @@ async function createPreviewAsks() {
   }
 }
 
-function showEdit(ask) {
+function showEdit(id) {
+  const ask = asksById[id];
+  if (!ask) return;
   const card = document.getElementById("card-" + ask.id);
   card.innerHTML =
     '<div class="edit-form">' +
@@ -1252,6 +1406,175 @@ async function deleteAsk(id) {
     return;
   }
   await load();
+}
+
+// ---------- Modal (υπάρχον #modalShell) ----------
+function openModal(html) {
+  const shell = document.getElementById("modalShell");
+  shell.innerHTML = '<div class="modal-card" role="document">' + html + '</div>';
+  shell.hidden = false;
+}
+
+function closeModal() {
+  const shell = document.getElementById("modalShell");
+  shell.hidden = true;
+  shell.innerHTML = "";
+}
+
+function currentProjectName() {
+  const project = projectsById[currentProject];
+  return project ? project.name : "";
+}
+
+// ---------- Ομάδα project ----------
+async function openMembers() {
+  closeDrawer();
+  if (!currentProject) { alert("Δημιούργησε ή επίλεξε πρώτα ένα project."); return; }
+  openModal('<h2>👥 Ομάδα project</h2><p class="helptext">' + esc(currentProjectName()) + '</p><p class="loading">Φόρτωση...</p>');
+  await renderMembers();
+}
+
+async function renderMembers(message, messageClass) {
+  const res = await fetch("/api/projects/" + encodeURIComponent(currentProject) + "/members");
+  const data = await res.json().catch(function() { return {}; });
+  if (!res.ok) {
+    openModal('<h2>👥 Ομάδα project</h2><p class="result-error">' + esc(data.error || "Σφάλμα φόρτωσης.") + '</p>' +
+      '<div class="modal-actions"><button class="secondary" onclick="closeModal()">Κλείσιμο</button></div>');
+    return;
+  }
+  const members = data.members || [];
+  const statusLabel = { sent: "πρόσκληση στάλθηκε", failed: "η πρόσκληση απέτυχε", pending: "σε αναμονή" };
+  let html = '<h2>👥 Ομάδα project</h2><p class="helptext">' + esc(currentProjectName()) +
+    ' — τα μέλη βλέπουν όλα τα asks του project και αλλάζουν status. Μπαίνουν με το email τους (κωδικός 6 ψηφίων).</p>' +
+    '<ul class="member-list">' +
+    (data.owner_email ? '<li><span>' + esc(data.owner_email) + ' <small>· δημιουργός</small></span></li>' : "") +
+    members.map(function(member) {
+      return '<li><span>' + esc(member.email) + ' <small>· ' + esc(statusLabel[member.invite_status] || member.invite_status) + '</small></span>' +
+        (data.can_manage ? '<button class="danger-outline" onclick="removeMember(\'' + esc(member.email) + '\')">Αφαίρεση</button>' : "") +
+        '</li>';
+    }).join("") +
+    (members.length ? "" : '<li><small>Δεν υπάρχουν ακόμα μέλη.</small></li>') +
+    '</ul>';
+  if (data.can_manage) {
+    html += '<label for="memberEmails"><b>Πρόσθεσε μέλη</b> — emails χωρισμένα με κόμμα</label>' +
+      '<textarea id="memberEmails" placeholder="onoma.epitheto@kafkas.gr, allos@kafkas.gr"></textarea>' +
+      (currentRole === "admin" ? '<p class="helptext">Ως admin μπορείς να προσθέσεις και εξωτερικούς συνεργάτες (π.χ. @netcompany.com).</p>'
+        : '<p class="helptext">Εξωτερικά emails (εκτός @kafkas.gr) προσθέτει μόνο admin.</p>');
+  }
+  html += (message ? '<p class="' + (messageClass || "") + '">' + message + '</p>' : "") +
+    '<div class="modal-actions"><button class="secondary" onclick="closeModal()">Κλείσιμο</button>' +
+    (data.can_manage ? '<button id="addMembersButton" onclick="addMembers()">Πρόσθεσε &amp; στείλε πρόσκληση</button>' : "") +
+    '</div>';
+  openModal(html);
+}
+
+async function addMembers() {
+  const input = document.getElementById("memberEmails");
+  const emails = input ? input.value : "";
+  if (!emails.trim()) return;
+  const button = document.getElementById("addMembersButton");
+  if (button) { button.disabled = true; button.textContent = "Αποστολή..."; }
+  const res = await fetch("/api/projects/" + encodeURIComponent(currentProject) + "/members", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ emails: emails }),
+  });
+  const data = await res.json().catch(function() { return {}; });
+  if (!res.ok) {
+    await renderMembers(esc(data.error || "Η προσθήκη απέτυχε."), "result-error");
+    return;
+  }
+  const parts = [];
+  if (data.added.length) parts.push("Προστέθηκαν: " + esc(data.added.join(", ")));
+  if (data.already_members.length) parts.push("Ήδη μέλη: " + esc(data.already_members.join(", ")));
+  if (data.invalid.length) parts.push("Μη έγκυρα: " + esc(data.invalid.join(", ")));
+  if (data.not_allowed.length) parts.push("Χρειάζεται admin (εξωτερικά): " + esc(data.not_allowed.join(", ")));
+  if (data.invite_failed.length) parts.push("Η πρόσκληση email απέτυχε για: " + esc(data.invite_failed.join(", ")) + " — έχουν όμως πρόσβαση.");
+  const problems = data.invalid.length || data.not_allowed.length || data.invite_failed.length;
+  await renderMembers(parts.join("<br>"), problems ? "result-warn" : "result-ok");
+}
+
+async function removeMember(email) {
+  if (!confirm("Αφαίρεση του " + email + " από την ομάδα;")) return;
+  const res = await fetch("/api/projects/" + encodeURIComponent(currentProject) + "/members/" + encodeURIComponent(email), { method: "DELETE" });
+  const data = await res.json().catch(function() { return {}; });
+  await renderMembers(res.ok ? "Αφαιρέθηκε: " + esc(email) : esc(data.error || "Η αφαίρεση απέτυχε."), res.ok ? "result-ok" : "result-error");
+}
+
+// ---------- Master Task List import ----------
+function openImport() {
+  closeDrawer();
+  if (!currentProject) { alert("Δημιούργησε ή επίλεξε πρώτα ένα project."); return; }
+  openModal('<h2>📥 Import Master Task List</h2>' +
+    '<p class="helptext">Project: <b>' + esc(currentProjectName()) + '</b>. Επικόλλησε τη λίστα (μπλοκ που ξεκινούν με <b>TASK:</b>) ή επίλεξε αρχείο .txt. ' +
+    'Χωρίζεται αυτόματα σε captures έως 19.500 χαρακτήρες χωρίς να κόβεται εργασία. Είναι ασφαλές να ξανατρέξει: δεν δημιουργεί διπλότυπα και κρατά τις αλλαγές σου.</p>' +
+    '<input id="importFile" type="file" accept=".txt,text/plain" />' +
+    '<textarea id="importText" rows="10" placeholder="TASK: ...&#10;GROUP: ...&#10;OWNER: ..."></textarea>' +
+    '<div class="modal-actions">' +
+      '<button class="secondary" onclick="closeModal()">Κλείσιμο</button>' +
+      '<button class="secondary" id="importPreviousButton" onclick="runImport(\'previous\')">Επανάληψη προηγούμενου import</button>' +
+      '<button id="importRunButton" onclick="runImport()">Import</button>' +
+    '</div><div id="importResult"></div>');
+  document.getElementById("importFile").addEventListener("change", function(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    file.text().then(function(content) { document.getElementById("importText").value = content; });
+  });
+}
+
+async function runImport(source) {
+  const textarea = document.getElementById("importText");
+  const text = textarea ? textarea.value : "";
+  if (source !== "previous" && !text.trim()) {
+    document.getElementById("importResult").innerHTML = '<p class="result-error">Επικόλλησε το Master Task List ή επίλεξε αρχείο.</p>';
+    return;
+  }
+  const buttons = [document.getElementById("importRunButton"), document.getElementById("importPreviousButton")];
+  buttons.forEach(function(b) { if (b) b.disabled = true; });
+  document.getElementById("importResult").innerHTML = '<p class="loading">⏳ Import σε εξέλιξη...</p>';
+  try {
+    const res = await fetch("/api/projects/" + encodeURIComponent(currentProject) + "/import-master-tasks", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(source === "previous" ? { source: "previous" } : { text: text }),
+    });
+    const summary = await res.json().catch(function() { return { status: "Failed", error: "Μη αναγνώσιμη απάντηση." }; });
+    document.getElementById("importResult").innerHTML = renderImportSummary(summary);
+    if (summary.tasks && (summary.tasks.created || summary.tasks.updated)) load();
+  } catch (e) {
+    document.getElementById("importResult").innerHTML = '<p class="result-error">Σφάλμα δικτύου. Δοκίμασε ξανά (είναι ασφαλές).</p>';
+  } finally {
+    buttons.forEach(function(b) { if (b) b.disabled = false; });
+  }
+}
+
+function renderImportSummary(s) {
+  if (s.error && !s.tasks) return '<p class="result-error">' + esc(s.error) + '</p>';
+  const statusClass = s.status === "Success" ? "result-ok" : s.status === "Partial Failure" ? "result-warn" : "result-error";
+  const list = function(title, items, fmt) {
+    return items && items.length
+      ? '<details class="import-details"><summary>' + esc(title) + ' (' + items.length + ')</summary><ul>' +
+        items.slice(0, 200).map(function(item) { return '<li>' + esc(fmt ? fmt(item) : item) + '</li>'; }).join("") + '</ul></details>'
+      : "";
+  };
+  return '<p class="' + statusClass + '"><b>' + esc(s.status) + '</b> · batch ' + esc(s.importBatchId || "—") + '</p>' +
+    '<div class="summary-grid">' +
+      '<div><b>' + s.captures.created + '</b>captures created</div>' +
+      '<div><b>' + s.captures.updated + '</b>captures updated</div>' +
+      '<div><b>' + s.captures.rejected + '</b>captures rejected</div>' +
+      '<div><b>' + s.tasks.created + '</b>tasks created</div>' +
+      '<div><b>' + s.tasks.updated + '</b>tasks updated</div>' +
+      '<div><b>' + s.tasks.skipped + '</b>tasks skipped (αμετάβλητα)</div>' +
+      '<div><b>' + s.dependencies.created + '</b>dependencies created</div>' +
+      '<div><b>' + s.reminders.created + '</b>reminders created</div>' +
+      '<div><b>' + s.unresolvedOwners.length + '</b>unresolved owners</div>' +
+      '<div><b>' + s.unresolvedDependencies.length + '</b>unresolved dependencies</div>' +
+    '</div>' +
+    list("Parts", s.parts, function(p) { return "Part " + p.part + "/" + p.total + " · " + p.length + " χαρ. · " + p.tasks + " tasks · " + p.status + (p.error ? " — " + p.error : ""); }) +
+    list("Validation errors", s.validationErrors, function(e) { return (e.part ? "Part " + e.part + " (" + e.length + " χαρ.): " : "") + e.message; }) +
+    list("Warnings", s.warnings) +
+    list("Unresolved owners (κρατήθηκαν ως κείμενο)", s.unresolvedOwners) +
+    list("Unresolved dependencies (κρατήθηκαν ως κείμενο)", s.unresolvedDependencies, function(d) { return d.task + " → " + d.reference; });
 }
 
 function selectAllAsks() {
@@ -1327,7 +1650,14 @@ document.getElementById("mobileMenuButton").addEventListener("click", function()
 });
 document.getElementById("drawerBackdrop").addEventListener("click", closeDrawer);
 document.addEventListener("keydown", function(event) {
-  if (event.key === "Escape") closeDrawer();
+  if (event.key === "Escape") { closeDrawer(); closeModal(); }
+});
+document.getElementById("modalShell").addEventListener("click", function(event) {
+  if (event.target === event.currentTarget) closeModal();
+});
+document.getElementById("viewSelect").addEventListener("change", function(event) {
+  currentView = event.target.value;
+  load();
 });
 
 document.getElementById("projectSelect").addEventListener("change", function(e) {

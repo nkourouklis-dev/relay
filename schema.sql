@@ -122,6 +122,18 @@ CREATE TABLE asks (
   source_quote  TEXT,                  -- το ακριβές απόσπασμα (trust)
   created_by    TEXT DEFAULT '',       -- legacy label (email), όχι για permissions
   created_by_user_id TEXT REFERENCES relay_users(id),  -- Φάση 1: NULL = μόνο admin
+  priority      TEXT,                  -- critical | high | medium | low (migrate_master_task_import.sql)
+  source_status TEXT,
+  section       TEXT,
+  start_date    TEXT,
+  due_constraint TEXT,
+  go_live_blocking TEXT,               -- yes | potential | no
+  assignees     TEXT,
+  accountable   TEXT,
+  external_import_key TEXT,
+  import_batch_id TEXT,
+  details_json  TEXT,
+  import_snapshot_json TEXT,
   created_at    TEXT DEFAULT (datetime('now'))
 );
 
@@ -138,6 +150,43 @@ CREATE INDEX idx_asks_project ON asks(project_id);
 CREATE INDEX idx_asks_status  ON asks(status);
 CREATE INDEX idx_asks_owner_user ON asks(owner_user_id);
 CREATE INDEX idx_sources_proj ON sources(project_id);
+CREATE UNIQUE INDEX idx_asks_import_key ON asks(project_id, external_import_key) WHERE external_import_key IS NOT NULL;
+
+-- Μέλη ομάδας ανά project (βλ. migrate_project_members.sql)
+CREATE TABLE relay_project_members (
+  id                 TEXT PRIMARY KEY,
+  project_id         TEXT NOT NULL REFERENCES projects(id),
+  email              TEXT NOT NULL,
+  invited_by_user_id TEXT REFERENCES relay_users(id),
+  invited_at         TEXT NOT NULL,
+  invite_status      TEXT NOT NULL DEFAULT 'pending',
+  UNIQUE (project_id, email)
+);
+CREATE INDEX idx_project_members_email ON relay_project_members(email);
+
+-- Εξαρτήσεις και υπενθυμίσεις (βλ. migrate_master_task_import.sql)
+CREATE TABLE relay_ask_dependencies (
+  id                TEXT PRIMARY KEY,
+  ask_id            TEXT NOT NULL REFERENCES asks(id),
+  depends_on_ask_id TEXT NOT NULL REFERENCES asks(id),
+  source            TEXT,
+  created_at        TEXT NOT NULL,
+  UNIQUE (ask_id, depends_on_ask_id)
+);
+CREATE INDEX idx_ask_dependencies_depends_on ON relay_ask_dependencies(depends_on_ask_id);
+CREATE TABLE relay_reminders (
+  id           TEXT PRIMARY KEY,
+  ask_id       TEXT NOT NULL REFERENCES asks(id),
+  project_id   TEXT NOT NULL REFERENCES projects(id),
+  remind_at    TEXT NOT NULL,
+  rule         TEXT NOT NULL,
+  recurrence   TEXT,
+  dedupe_key   TEXT NOT NULL UNIQUE,
+  status       TEXT NOT NULL DEFAULT 'pending',
+  last_sent_at TEXT,
+  created_at   TEXT NOT NULL
+);
+CREATE INDEX idx_reminders_due ON relay_reminders(status, remind_at);
 CREATE INDEX idx_projects_created_by_user ON projects(created_by_user_id);
 CREATE INDEX idx_asks_created_by_user ON asks(created_by_user_id);
 
