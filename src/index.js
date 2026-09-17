@@ -119,6 +119,19 @@ function isLocalDevelopment(request) {
   return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1";
 }
 
+function canonicalRedirect(env, request, url) {
+  if (!env.BETTER_AUTH_URL || isLocalDevelopment(request) || url.pathname === "/api/ingest") return null;
+  let canonical;
+  try {
+    canonical = new URL(env.BETTER_AUTH_URL);
+  } catch {
+    return null;
+  }
+  if (url.host === canonical.host) return null;
+  // 302 (όχι 301) ώστε οι browsers να μην το κρατήσουν μόνιμα αν αλλάξει ξανά το URL.
+  return Response.redirect(canonical.origin + url.pathname + url.search, 302);
+}
+
 function getDevelopmentSession() {
   return {
     user: {
@@ -843,6 +856,11 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     const todayStr = new Date().toISOString().slice(0, 10);
+
+    // Ένα κανονικό URL εφαρμογής (BETTER_AUTH_URL): cookies και magic links δένονται σε αυτό.
+    // Το /api/ingest μένει προσβάσιμο και από το παλιό host για τυχόν εξωτερικούς καλούντες.
+    const redirect = canonicalRedirect(env, request, url);
+    if (redirect) return redirect;
 
     if (path === "/api/auth" || path.startsWith("/api/auth/")) {
       if (isLocalDevelopment(request) && path === "/api/auth/get-session") {

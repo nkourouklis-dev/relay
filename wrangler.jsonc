@@ -7,7 +7,9 @@
   "compatibility_flags": ["nodejs_compat"],
 
   "vars": {
-    "BETTER_AUTH_URL": "https://relay.nkourouklis.workers.dev",
+    // Δημόσιο URL της εφαρμογής (Pages front door, βλ. pages/). Requests σε άλλο host
+    // (π.χ. το παλιό relay.nkourouklis.workers.dev) ανακατευθύνονται εδώ.
+    "BETTER_AUTH_URL": "https://kafkas-relay.pages.dev",
     "AUTH_EMAIL_FROM": "Relay <nkourouklis@ireneart.eu>",
     // Φάση 1: login μόνο με email αυτού του domain...
     "ALLOWED_EMAIL_DOMAIN": "kafkas.gr"
@@ -19,7 +21,9 @@
   // Στατικό frontend (public/) σερβίρεται από τον ίδιο Worker
   "assets": {
     "directory": "./public",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
+    // Ο Worker τρέχει πρώτα και για static αρχεία, ώστε να ισχύει η ανακατεύθυνση στο κανονικό URL
+    "run_worker_first": true
   },
 
   // D1 database — ΚΡΑΤΑ ΤΟ ΔΙΚΟ ΣΟΥ database_id εδώ!
