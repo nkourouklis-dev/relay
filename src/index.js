@@ -55,7 +55,13 @@ function createAuth(env) {
         role: { type: "string", required: false, defaultValue: "user", input: false },
       },
     },
-    session: { modelName: "relay_sessions" },
+    session: {
+      modelName: "relay_sessions",
+      // Ίδιος browser = μένεις συνδεδεμένος. Το session λήγει μόνο μετά από 90 μέρες χωρίς χρήση
+      // (ανανεώνεται αυτόματα μία φορά τη μέρα όσο χρησιμοποιείται). Νέος browser/συσκευή = νέος κωδικός.
+      expiresIn: 60 * 60 * 24 * 90,
+      updateAge: 60 * 60 * 24,
+    },
     account: { modelName: "relay_accounts" },
     verification: { modelName: "relay_verifications" },
     hooks: {
