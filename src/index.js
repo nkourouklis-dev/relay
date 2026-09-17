@@ -5,7 +5,8 @@
 import PostalMime from "postal-mime";
 import { betterAuth } from "better-auth";
 import { emailOTP } from "better-auth/plugins";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthEndpoint, createAuthMiddleware } from "better-auth/api";
+import { setSessionCookie } from "better-auth/cookies";
 
 // ---------- Επιτρεπτά emails (Φάση 1) ----------
 // ALLOWED_EMAIL_DOMAIN: π.χ. "kafkas.gr". ALLOWED_EMAILS: ρητές εξαιρέσεις, comma-separated.
@@ -123,8 +124,92 @@ function createAuth(env) {
           }
         },
       }),
+      trustedDevicePlugin(env),
     ],
   });
+}
+
+// ---------- Trusted devices ----------
+// Browser που έχει επιβεβαιωθεί με κωδικό email: ο ίδιος χρήστης ξαναμπαίνει εκεί μόνο με το email
+// του (π.χ. μετά από αποσύνδεση). Νέος browser/συσκευή -> κωδικός. Στη D1 μένει μόνο το hash.
+const TRUSTED_DEVICE_COOKIE = "relay_trusted_device";
+const TRUSTED_DEVICE_DAYS = 180;
+
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function randomToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function trustedDevicePlugin(env) {
+  const cookieOptions = (ctx) => ({
+    httpOnly: true,
+    secure: String(ctx.context.options.baseURL || "").startsWith("https://"),
+    sameSite: "lax",
+    path: "/",
+    maxAge: TRUSTED_DEVICE_DAYS * 24 * 60 * 60,
+  });
+
+  return {
+    id: "relay-trusted-device",
+    endpoints: {
+      deviceSignIn: createAuthEndpoint("/device-sign-in", { method: "POST" }, async (ctx) => {
+        const email = String(ctx.body?.email || "").trim().toLowerCase();
+        if (!isEmailAllowed(env, email)) {
+          throw new APIError("FORBIDDEN", { message: emailNotAllowedMessage(env) });
+        }
+        const token = ctx.getCookie(TRUSTED_DEVICE_COOKIE);
+        if (!token) throw new APIError("UNAUTHORIZED", { message: "DEVICE_NOT_TRUSTED" });
+
+        const now = new Date().toISOString();
+        const device = await env.DB.prepare(
+          `SELECT d.id, d.user_id FROM relay_trusted_devices d
+           JOIN relay_users u ON u.id = d.user_id
+           WHERE d.token_hash = ? AND d.expires_at > ? AND lower(u.email) = ?`
+        ).bind(await sha256Hex(token), now, email).first();
+        if (!device) throw new APIError("UNAUTHORIZED", { message: "DEVICE_NOT_TRUSTED" });
+
+        const found = await ctx.context.internalAdapter.findUserByEmail(email);
+        if (!found?.user || found.user.id !== device.user_id) {
+          throw new APIError("UNAUTHORIZED", { message: "DEVICE_NOT_TRUSTED" });
+        }
+        const session = await ctx.context.internalAdapter.createSession(found.user.id);
+        await setSessionCookie(ctx, { session, user: found.user });
+        await env.DB.prepare("UPDATE relay_trusted_devices SET last_used_at = ? WHERE id = ?")
+          .bind(now, device.id).run();
+        return ctx.json({ status: true });
+      }),
+    },
+    hooks: {
+      after: [
+        {
+          // Μετά από επιτυχή σύνδεση με κωδικό, ο browser γίνεται trusted.
+          matcher: (ctx) => ctx.path === "/sign-in/email-otp",
+          handler: createAuthMiddleware(async (ctx) => {
+            const newSession = ctx.context.newSession;
+            if (!newSession?.user?.id) return;
+            const token = randomToken();
+            const now = new Date();
+            const expires = new Date(now.getTime() + TRUSTED_DEVICE_DAYS * 24 * 60 * 60 * 1000);
+            await env.DB.prepare(
+              `INSERT INTO relay_trusted_devices (id, user_id, token_hash, user_agent, created_at, last_used_at, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)`
+            ).bind(
+              crypto.randomUUID(), newSession.user.id, await sha256Hex(token),
+              String(ctx.headers?.get("user-agent") || "").slice(0, 300),
+              now.toISOString(), now.toISOString(), expires.toISOString()
+            ).run();
+            ctx.setCookie(TRUSTED_DEVICE_COOKIE, token, cookieOptions(ctx));
+          }),
+        },
+      ],
+    },
+    rateLimit: [{ pathMatcher: (path) => path === "/device-sign-in", window: 60, max: 10 }],
+  };
 }
 
 async function sendLoginCodeEmail(env, email, otp) {

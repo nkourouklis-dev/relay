@@ -202,7 +202,7 @@
   <p id="authIntro">Βάλε το email σου και θα σου στείλουμε ένα ασφαλές link σύνδεσης.</p>
   <form id="loginForm">
     <input id="loginEmail" type="email" autocomplete="email" placeholder="onoma@kafkas.gr" required />
-    <button id="loginButton" type="submit">Στείλε κωδικό</button>
+    <button id="loginButton" type="submit">Συνέχεια</button>
   </form>
   <form id="codeForm" hidden>
     <input id="loginCode" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="Κωδικός 6 ψηφίων" required />
@@ -318,13 +318,13 @@ function showLogin(message, className) {
   document.getElementById("codeForm").hidden = true;
   document.getElementById("resendLinkButton").hidden = true;
   document.getElementById("loginButton").disabled = false;
-  document.getElementById("loginButton").textContent = "Στείλε κωδικό";
+  document.getElementById("loginButton").textContent = "Συνέχεια";
   document.getElementById("codeButton").disabled = false;
   document.getElementById("codeButton").textContent = "Σύνδεση";
   document.getElementById("loginCode").value = "";
 }
 
-const LOGIN_INTRO = "Βάλε το εταιρικό σου email και θα σου στείλουμε κωδικό σύνδεσης 6 ψηφίων. Αν είναι η πρώτη σου φορά, ο λογαριασμός δημιουργείται αυτόματα.";
+const LOGIN_INTRO = "Βάλε το εταιρικό σου email. Σε browser που έχεις ξαναμπεί, μπαίνεις κατευθείαν· αλλιώς θα σου στείλουμε κωδικό 6 ψηφίων. Αν είναι η πρώτη σου φορά, ο λογαριασμός δημιουργείται αυτόματα.";
 
 let loginEmailPending = "";
 
@@ -391,10 +391,25 @@ async function requestLoginCode(event) {
 
   const button = document.getElementById("loginButton");
   button.disabled = true;
-  button.textContent = "Αποστολή...";
+  button.textContent = "Σύνδεση...";
   setAuthMessage("");
 
   try {
+    // Γνωστός browser για αυτό το email -> σύνδεση χωρίς κωδικό.
+    const trusted = await fetch("/api/auth/device-sign-in", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: email }),
+    });
+    if (trusted.ok) {
+      await checkSession();
+      return;
+    }
+    if (trusted.status === 403) {
+      throw new Error(await authErrorText(trusted, "Η σύνδεση δεν επιτρέπεται για αυτό το email."));
+    }
+
+    button.textContent = "Αποστολή κωδικού...";
     const response = await fetch("/api/auth/email-otp/send-verification-otp", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -415,7 +430,7 @@ async function requestLoginCode(event) {
     setAuthMessage((error && error.message) || "Δεν ήταν δυνατή η αποστολή. Δοκίμασε ξανά αργότερα.", "error");
   } finally {
     button.disabled = false;
-    button.textContent = "Στείλε κωδικό";
+    button.textContent = "Συνέχεια";
   }
 }
 

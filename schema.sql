@@ -73,6 +73,18 @@ CREATE INDEX relay_sessions_userId_idx ON relay_sessions(userId);
 CREATE INDEX relay_accounts_userId_idx ON relay_accounts(userId);
 CREATE INDEX relay_verifications_identifier_idx ON relay_verifications(identifier);
 
+-- Browsers επιβεβαιωμένοι με κωδικό email (βλ. migrate_trusted_devices.sql)
+CREATE TABLE relay_trusted_devices (
+  id           TEXT PRIMARY KEY,
+  user_id      TEXT NOT NULL REFERENCES relay_users(id) ON DELETE CASCADE,
+  token_hash   TEXT NOT NULL UNIQUE,
+  user_agent   TEXT,
+  created_at   TEXT NOT NULL,
+  last_used_at TEXT NOT NULL,
+  expires_at   TEXT NOT NULL
+);
+CREATE INDEX idx_trusted_devices_user ON relay_trusted_devices(user_id);
+
 -- Έργα (outcomes rollup)
 CREATE TABLE projects (
   id           TEXT PRIMARY KEY,
