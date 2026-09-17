@@ -4,7 +4,7 @@
 
 import PostalMime from "postal-mime";
 import { betterAuth } from "better-auth";
-import { magicLink } from "better-auth/plugins";
+import { emailOTP } from "better-auth/plugins";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 
 // ---------- Επιτρεπτά emails (Φάση 1) ----------
@@ -36,9 +36,13 @@ function createAuth(env) {
   const secret = env.BETTER_AUTH_SECRET;
   if (!secret) {
     throw new Error(
-      "Auth is not configured for this environment yet. Set BETTER_AUTH_SECRET in Cloudflare Secrets before enabling magic-link auth."
+      "Auth is not configured for this environment yet. Set BETTER_AUTH_SECRET in Cloudflare Secrets before enabling email login."
     );
   }
+
+  // Ο Better Auth καταπίνει σφάλματα του sendVerificationOTP και απαντά 200.
+  // Το createAuth τρέχει ανά request, οπότε αυτή η σημαία αφορά μόνο το τρέχον request.
+  let loginCodeDeliveryFailed = false;
 
   return betterAuth({
     secret,
@@ -56,8 +60,30 @@ function createAuth(env) {
     verification: { modelName: "relay_verifications" },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
-        if (ctx.path === "/sign-in/magic-link" && !isEmailAllowed(env, ctx.body?.email)) {
-          throw new APIError("FORBIDDEN", { message: emailNotAllowedMessage(env) });
+        // Login μόνο με κωδικό (email OTP) τύπου "sign-in". Τα υπόλοιπα email-otp flows
+        // (password reset, αλλαγή email, email verification) δεν χρησιμοποιούνται.
+        if (ctx.path === "/email-otp/send-verification-otp") {
+          if (ctx.body?.type !== "sign-in") {
+            throw new APIError("BAD_REQUEST", { message: "Μη υποστηριζόμενη ενέργεια." });
+          }
+          if (!isEmailAllowed(env, ctx.body?.email)) {
+            throw new APIError("FORBIDDEN", { message: emailNotAllowedMessage(env) });
+          }
+          return;
+        }
+        if (ctx.path === "/sign-in/email-otp") {
+          if (!isEmailAllowed(env, ctx.body?.email)) {
+            throw new APIError("FORBIDDEN", { message: emailNotAllowedMessage(env) });
+          }
+          return;
+        }
+        if (ctx.path.startsWith("/email-otp/") || ctx.path.startsWith("/forget-password/")) {
+          throw new APIError("NOT_FOUND", { message: "Not found" });
+        }
+      }),
+      after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === "/email-otp/send-verification-otp" && loginCodeDeliveryFailed) {
+          throw new APIError("BAD_GATEWAY", { message: "Η αποστολή του κωδικού απέτυχε. Δοκίμασε ξανά σε λίγο." });
         }
       }),
     },
@@ -74,42 +100,67 @@ function createAuth(env) {
       },
     },
     plugins: [
-      magicLink({
-        rateLimit: { window: 60, max: 5 },
-        sendMagicLink: async ({ email, url }) => {
-          if (!env.RESEND_API_KEY) return;
-          if (!env.AUTH_EMAIL_FROM || !env.BETTER_AUTH_URL) {
-            throw new Error("Magic-link email delivery is not configured.");
+      // Κωδικός 6 ψηφίων στο email αντί για link: τα εταιρικά φίλτρα (π.χ. Microsoft Defender)
+      // δεν μπορούν να "καταναλώσουν" κωδικό και το email δεν περιέχει κανένα link.
+      emailOTP({
+        otpLength: 6,
+        expiresIn: 600,
+        allowedAttempts: 3,
+        storeOTP: "hashed",
+        rateLimit: { window: 60, max: 3 },
+        sendVerificationOTP: async ({ email, otp }) => {
+          try {
+            await sendLoginCodeEmail(env, email, otp);
+          } catch (error) {
+            loginCodeDeliveryFailed = true;
+            throw error;
           }
-
-          const response = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${env.RESEND_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              from: env.AUTH_EMAIL_FROM,
-              to: [email],
-              subject: "Your Relay sign-in link",
-              text: `Sign in to Relay with this link:\n\n${url}\n\nThis link expires in 5 minutes and can be used once.`,
-              html: `<p>Sign in to Relay with the link below.</p><p><a href="${url}">Sign in to Relay</a></p><p>This link expires in 5 minutes and can be used once.</p>`,
-            }),
-          });
-
-          if (!response.ok) {
-            console.log("Magic-link email rejected by Resend", { status: response.status });
-            throw new Error("Magic-link email delivery failed.");
-          }
-          // Χωρίς link/token: μόνο το Resend id και το domain παραλήπτη, για έλεγχο παράδοσης.
-          const sent = await response.json().catch(() => ({}));
-          console.log("Magic-link email accepted by Resend", {
-            resend_id: sent.id || "",
-            recipient_domain: String(email).split("@")[1] || "",
-          });
         },
       }),
     ],
+  });
+}
+
+async function sendLoginCodeEmail(env, email, otp) {
+  if (!env.RESEND_API_KEY || !env.AUTH_EMAIL_FROM) {
+    console.log("Login code email not sent: email delivery is not configured");
+    throw new APIError("SERVICE_UNAVAILABLE", { message: "Η αποστολή email δεν είναι ρυθμισμένη." });
+  }
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: env.AUTH_EMAIL_FROM,
+      to: [email],
+      subject: `Κωδικός σύνδεσης Relay: ${otp}`,
+      text:
+        `Ο κωδικός σύνδεσής σου στο Relay είναι: ${otp}
+
+` +
+        `Πληκτρολόγησέ τον στη σελίδα σύνδεσης. Ισχύει για 10 λεπτά.
+` +
+        `Αν δεν ζήτησες εσύ σύνδεση, αγνόησε αυτό το μήνυμα.`,
+      html:
+        `<p>Ο κωδικός σύνδεσής σου στο Relay είναι:</p>` +
+        `<p style="font-size:28px;font-weight:700;letter-spacing:6px;margin:12px 0">${otp}</p>` +
+        `<p>Πληκτρολόγησέ τον στη σελίδα σύνδεσης. Ισχύει για 10 λεπτά.</p>` +
+        `<p style="color:#64748b">Αν δεν ζήτησες εσύ σύνδεση, αγνόησε αυτό το μήνυμα.</p>`,
+    }),
+  });
+
+  if (!response.ok) {
+    console.log("Login code email rejected by Resend", { status: response.status });
+    throw new APIError("BAD_GATEWAY", { message: "Η αποστολή του κωδικού απέτυχε. Δοκίμασε ξανά." });
+  }
+  // Χωρίς τον κωδικό: μόνο Resend id και domain παραλήπτη, για έλεγχο παράδοσης.
+  const sent = await response.json().catch(() => ({}));
+  console.log("Login code email accepted by Resend", {
+    resend_id: sent.id || "",
+    recipient_domain: String(email).split("@")[1] || "",
   });
 }
 

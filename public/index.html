@@ -201,11 +201,15 @@
   <h1>Σύνδεση στο Relay</h1>
   <p id="authIntro">Βάλε το email σου και θα σου στείλουμε ένα ασφαλές link σύνδεσης.</p>
   <form id="loginForm">
-    <input id="loginEmail" type="email" autocomplete="email" placeholder="you@example.com" required />
-    <button id="loginButton" type="submit">Στείλε link</button>
+    <input id="loginEmail" type="email" autocomplete="email" placeholder="onoma@kafkas.gr" required />
+    <button id="loginButton" type="submit">Στείλε κωδικό</button>
+  </form>
+  <form id="codeForm" hidden>
+    <input id="loginCode" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="Κωδικός 6 ψηφίων" required />
+    <button id="codeButton" type="submit">Σύνδεση</button>
   </form>
   <p id="authMessage" class="auth-message" role="status"></p>
-  <button id="resendLinkButton" class="secondary" type="button" hidden>Στείλε νέο link ή άλλαξε email</button>
+  <button id="resendLinkButton" class="secondary" type="button" hidden>Νέος κωδικός ή άλλο email</button>
 </main>
 <main id="app" class="app-shell" hidden>
  <div class="workspace-content">
@@ -311,32 +315,37 @@ function showLogin(message, className) {
   messageEl.className = "auth-message" + (className ? " " + className : "");
   document.getElementById("authIntro").textContent = LOGIN_INTRO;
   document.getElementById("loginForm").hidden = false;
+  document.getElementById("codeForm").hidden = true;
   document.getElementById("resendLinkButton").hidden = true;
   document.getElementById("loginButton").disabled = false;
-  document.getElementById("loginButton").textContent = "Στείλε link";
+  document.getElementById("loginButton").textContent = "Στείλε κωδικό";
+  document.getElementById("codeButton").disabled = false;
+  document.getElementById("codeButton").textContent = "Σύνδεση";
+  document.getElementById("loginCode").value = "";
 }
 
-const LOGIN_INTRO = "Βάλε το εταιρικό σου email και θα σου στείλουμε ένα ασφαλές link σύνδεσης. Αν είναι η πρώτη σου φορά, ο λογαριασμός δημιουργείται αυτόματα όταν πατήσεις το link.";
+const LOGIN_INTRO = "Βάλε το εταιρικό σου email και θα σου στείλουμε κωδικό σύνδεσης 6 ψηφίων. Αν είναι η πρώτη σου φορά, ο λογαριασμός δημιουργείται αυτόματα.";
 
-// Better Auth επιστρέφει ?error=... όταν το magic link είναι άκυρο/ληγμένο/ήδη χρησιμοποιημένο.
-function takeLoginErrorFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get("error");
-  if (!code) return "";
-  params.delete("error");
-  params.delete("error_description");
-  const query = params.toString();
-  window.history.replaceState(null, "", window.location.pathname + (query ? "?" + query : "") + window.location.hash);
-  if (code === "INVALID_TOKEN" || code === "EXPIRED_TOKEN") {
-    return "Ο σύνδεσμος έληξε ή έχει ήδη χρησιμοποιηθεί (ισχύει 5 λεπτά και μία φορά). Ζήτα νέο link. Αν το ανοίγεις από εταιρικό Outlook και συμβαίνει ξανά, ίσως το «ανοίγει» πρώτο το σύστημα ασφαλείας του email.";
-  }
-  if (code === "FORBIDDEN" || code === "new_user_signup_disabled") {
-    return "Η σύνδεση δεν επιτρέπεται για αυτό το email.";
-  }
-  return "Η σύνδεση δεν ολοκληρώθηκε. Ζήτα νέο link.";
+let loginEmailPending = "";
+
+function setAuthMessage(text, kind) {
+  const messageEl = document.getElementById("authMessage");
+  messageEl.className = "auth-message" + (kind ? " auth-" + kind : "");
+  messageEl.textContent = text || "";
+}
+
+async function authErrorText(response, fallback) {
+  const body = await response.json().catch(function() { return {}; });
+  if (response.status === 429) return "Πολλές προσπάθειες. Περίμενε ένα λεπτό και δοκίμασε ξανά.";
+  if (body.code === "INVALID_OTP") return "Λάθος κωδικός. Έλεγξε τα ψηφία και δοκίμασε ξανά.";
+  if (body.code === "OTP_EXPIRED") return "Ο κωδικός έληξε. Ζήτα νέο κωδικό.";
+  if (body.code === "TOO_MANY_ATTEMPTS") return "Πολλές λάθος προσπάθειες για αυτόν τον κωδικό. Ζήτα νέο κωδικό.";
+  if ((response.status === 403 || response.status === 502) && body.message) return body.message;
+  return fallback;
 }
 
 function resetLoginForm() {
+  loginEmailPending = "";
   showLogin();
   const input = document.getElementById("loginEmail");
   input.focus();
@@ -364,50 +373,79 @@ async function checkSession() {
     });
     if (!response.ok) throw new Error();
     const session = await response.json();
-    const loginError = takeLoginErrorFromUrl();
     if (session && session.user) {
       showApp(session);
     } else {
-      showLogin(loginError, loginError ? "auth-error" : "");
+      showLogin();
     }
   } catch {
     showLogin("Δεν ήταν δυνατός ο έλεγχος σύνδεσης. Δοκίμασε ξανά.", "auth-error");
   }
 }
 
-async function requestMagicLink(event) {
+// Βήμα 1: αποστολή κωδικού 6 ψηφίων στο email.
+async function requestLoginCode(event) {
   event.preventDefault();
   const email = document.getElementById("loginEmail").value.trim();
   if (!email) return;
 
   const button = document.getElementById("loginButton");
-  const messageEl = document.getElementById("authMessage");
   button.disabled = true;
   button.textContent = "Αποστολή...";
-  messageEl.className = "auth-message";
-  messageEl.textContent = "";
+  setAuthMessage("");
 
   try {
-    const response = await fetch("/api/auth/sign-in/magic-link", {
+    const response = await fetch("/api/auth/email-otp/send-verification-otp", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: email, callbackURL: "/" }),
+      body: JSON.stringify({ email: email, type: "sign-in" }),
     });
     if (!response.ok) {
-      const errorBody = await response.json().catch(function() { return {}; });
-      throw new Error(response.status === 403 && errorBody.message ? errorBody.message : "");
+      throw new Error(await authErrorText(response, "Δεν ήταν δυνατή η αποστολή. Δοκίμασε ξανά αργότερα."));
     }
+    loginEmailPending = email;
     document.getElementById("loginForm").hidden = true;
+    document.getElementById("codeForm").hidden = false;
     document.getElementById("resendLinkButton").hidden = false;
     document.getElementById("authIntro").textContent =
-      "Στείλαμε link σύνδεσης στο " + email + ". Αν είναι η πρώτη σου σύνδεση, ο λογαριασμός σου δημιουργείται αυτόματα μόλις πατήσεις το link.";
-    messageEl.className = "auth-message auth-success";
-    messageEl.textContent = "Το link ισχύει 5 λεπτά και μία φορά. Αν δεν το βλέπεις, κοίτα στα Ανεπιθύμητα / Junk ή στην καραντίνα email.";
+      "Στείλαμε κωδικό 6 ψηφίων στο " + email + ". Γράψε τον παρακάτω. Αν είναι η πρώτη σου σύνδεση, ο λογαριασμός δημιουργείται αυτόματα.";
+    setAuthMessage("Ο κωδικός ισχύει 10 λεπτά. Αν δεν τον βλέπεις, κοίτα στα Ανεπιθύμητα / Junk ή στην καραντίνα email.", "success");
+    document.getElementById("loginCode").focus();
   } catch (error) {
+    setAuthMessage((error && error.message) || "Δεν ήταν δυνατή η αποστολή. Δοκίμασε ξανά αργότερα.", "error");
+  } finally {
     button.disabled = false;
-    button.textContent = "Στείλε link";
-    messageEl.className = "auth-message auth-error";
-    messageEl.textContent = (error && error.message) || "Δεν ήταν δυνατή η αποστολή. Δοκίμασε ξανά αργότερα.";
+    button.textContent = "Στείλε κωδικό";
+  }
+}
+
+// Βήμα 2: σύνδεση με τον κωδικό.
+async function verifyLoginCode(event) {
+  event.preventDefault();
+  const otp = document.getElementById("loginCode").value.replace(/\s+/g, "");
+  if (!loginEmailPending || !/^\d{6}$/.test(otp)) {
+    setAuthMessage("Ο κωδικός έχει 6 ψηφία.", "error");
+    return;
+  }
+
+  const button = document.getElementById("codeButton");
+  button.disabled = true;
+  button.textContent = "Σύνδεση...";
+  try {
+    const response = await fetch("/api/auth/sign-in/email-otp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: loginEmailPending, otp: otp }),
+    });
+    if (!response.ok) {
+      throw new Error(await authErrorText(response, "Η σύνδεση απέτυχε. Δοκίμασε ξανά."));
+    }
+    loginEmailPending = "";
+    await checkSession();
+  } catch (error) {
+    setAuthMessage((error && error.message) || "Η σύνδεση απέτυχε. Δοκίμασε ξανά.", "error");
+    button.disabled = false;
+    button.textContent = "Σύνδεση";
   }
 }
 
@@ -1192,7 +1230,8 @@ function syncNavActiveState(isDashboard) {
   toggle("navDashboardButton", isDashboard);
 }
 
-document.getElementById("loginForm").addEventListener("submit", requestMagicLink);
+document.getElementById("loginForm").addEventListener("submit", requestLoginCode);
+document.getElementById("codeForm").addEventListener("submit", verifyLoginCode);
 document.getElementById("resendLinkButton").addEventListener("click", resetLoginForm);
 document.body.classList.add("logged-out");
 document.getElementById("logoutButton").addEventListener("click", logout);
