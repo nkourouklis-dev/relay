@@ -1,0 +1,12 @@
+{
+  // Relay — Pages project που σερβίρει το https://kafkas-relay.pages.dev
+  // Deploy (από τον φάκελο pages/):  npx wrangler pages deploy
+  "name": "kafkas-relay",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-08-24",
+
+  // Προώθηση όλων των requests στον Worker "relay" (../wrangler.jsonc)
+  "services": [
+    { "binding": "RELAY", "service": "relay" }
+  ]
+}
