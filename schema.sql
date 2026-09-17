@@ -27,7 +27,8 @@ CREATE TABLE relay_users (
   emailVerified INTEGER NOT NULL DEFAULT 0,
   image         TEXT,
   createdAt     TEXT NOT NULL,
-  updatedAt     TEXT NOT NULL
+  updatedAt     TEXT NOT NULL,
+  role          TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user'))  -- Φάση 1
 );
 
 CREATE TABLE relay_sessions (
@@ -78,6 +79,7 @@ CREATE TABLE projects (
   name         TEXT NOT NULL,
   owner_email  TEXT,
   inbox_alias  TEXT UNIQUE,           -- π.χ. "acme" -> acme@in.relay.app
+  created_by_user_id TEXT REFERENCES relay_users(id),  -- Φάση 1: NULL = μόνο admin
   created_at   TEXT DEFAULT (datetime('now'))
 );
 
@@ -106,7 +108,8 @@ CREATE TABLE asks (
   status        TEXT DEFAULT 'open',   -- open | accepted | done | overdue
   confidence    REAL DEFAULT 1.0,
   source_quote  TEXT,                  -- το ακριβές απόσπασμα (trust)
-  created_by    TEXT DEFAULT '',
+  created_by    TEXT DEFAULT '',       -- legacy label (email), όχι για permissions
+  created_by_user_id TEXT REFERENCES relay_users(id),  -- Φάση 1: NULL = μόνο admin
   created_at    TEXT DEFAULT (datetime('now'))
 );
 
@@ -123,6 +126,8 @@ CREATE INDEX idx_asks_project ON asks(project_id);
 CREATE INDEX idx_asks_status  ON asks(status);
 CREATE INDEX idx_asks_owner_user ON asks(owner_user_id);
 CREATE INDEX idx_sources_proj ON sources(project_id);
+CREATE INDEX idx_projects_created_by_user ON projects(created_by_user_id);
+CREATE INDEX idx_asks_created_by_user ON asks(created_by_user_id);
 
 -- Demo δεδομένα για να δεις κάτι αμέσως
 INSERT INTO projects (id, name, owner_email, inbox_alias)

@@ -5,6 +5,32 @@
 import PostalMime from "postal-mime";
 import { betterAuth } from "better-auth";
 import { magicLink } from "better-auth/plugins";
+import { APIError, createAuthMiddleware } from "better-auth/api";
+
+// ---------- Επιτρεπτά emails (Φάση 1) ----------
+// ALLOWED_EMAIL_DOMAIN: π.χ. "kafkas.gr". ALLOWED_EMAILS: ρητές εξαιρέσεις, comma-separated.
+// Χωρίς ρυθμισμένο domain/λίστα απορρίπτονται όλα (fail closed).
+function isEmailAllowed(env, email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  const parts = normalized.split("@");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return false;
+
+  const exceptions = String(env.ALLOWED_EMAILS || "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  if (exceptions.includes(normalized)) return true;
+
+  const domain = String(env.ALLOWED_EMAIL_DOMAIN || "").trim().toLowerCase().replace(/^@/, "");
+  return !!domain && parts[1] === domain;
+}
+
+function emailNotAllowedMessage(env) {
+  const domain = String(env.ALLOWED_EMAIL_DOMAIN || "").trim().replace(/^@/, "");
+  return domain
+    ? `Η σύνδεση επιτρέπεται μόνο με εταιρικό email @${domain}.`
+    : "Η σύνδεση δεν επιτρέπεται για αυτό το email.";
+}
 
 function createAuth(env) {
   const secret = env.BETTER_AUTH_SECRET;
@@ -18,10 +44,35 @@ function createAuth(env) {
     secret,
     database: env.DB,
     baseURL: env.BETTER_AUTH_URL || undefined,
-    user: { modelName: "relay_users" },
+    user: {
+      modelName: "relay_users",
+      additionalFields: {
+        // input: false -> ο client δεν μπορεί ποτέ να ορίσει ρόλο. Admin γίνεται μόνο με SQL.
+        role: { type: "string", required: false, defaultValue: "user", input: false },
+      },
+    },
     session: { modelName: "relay_sessions" },
     account: { modelName: "relay_accounts" },
     verification: { modelName: "relay_verifications" },
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === "/sign-in/magic-link" && !isEmailAllowed(env, ctx.body?.email)) {
+          throw new APIError("FORBIDDEN", { message: emailNotAllowedMessage(env) });
+        }
+      }),
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          before: async (user) => {
+            if (!isEmailAllowed(env, user.email)) {
+              throw new APIError("FORBIDDEN", { message: emailNotAllowedMessage(env) });
+            }
+            return { data: { ...user, role: "user" } };
+          },
+        },
+      },
+    },
     plugins: [
       magicLink({
         rateLimit: { window: 60, max: 5 },
@@ -74,6 +125,7 @@ function getDevelopmentSession() {
       id: "local-development-user",
       name: "Local Development",
       email: "dev@local.relay",
+      role: "admin",
     },
     session: {
       id: "local-development-session",
@@ -81,13 +133,18 @@ function getDevelopmentSession() {
   };
 }
 
-function norm(s) {
-  return (s || "").trim().toLowerCase();
+// Ο dev user πρέπει να υπάρχει στο relay_users για τα foreign keys του created_by_user_id.
+async function ensureDevelopmentUser(env) {
+  const { user } = getDevelopmentSession();
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO relay_users (id, name, email, emailVerified, createdAt, updatedAt, role)
+     VALUES (?, ?, ?, 1, ?, ?, 'admin')`
+  ).bind(user.id, user.name, user.email, now, now).run();
 }
 
-function canModify(existingCreatedBy, requester) {
-  if (!existingCreatedBy || existingCreatedBy.trim() === "") return true;
-  return norm(existingCreatedBy) === norm(requester);
+function norm(s) {
+  return (s || "").trim().toLowerCase();
 }
 
 async function getSession(env, request) {
@@ -102,7 +159,51 @@ async function getSession(env, request) {
 async function requireSession(env, request) {
   const session = await getSession(env, request);
   if (!session) return json({ error: "Authentication required" }, 401);
+  if (isLocalDevelopment(request)) {
+    await ensureDevelopmentUser(env);
+  } else if (!isEmailAllowed(env, session.user?.email)) {
+    return json({ error: emailNotAllowedMessage(env) }, 403);
+  }
   return session;
+}
+
+// ---------- Permissions (Φάση 1) ----------
+// admin: βλέπει/επεξεργάζεται τα πάντα. user: μόνο ό,τι έχει created_by_user_id = ο ίδιος.
+function getActor(session) {
+  return {
+    id: session.user.id,
+    email: session.user.email || "",
+    role: session.user.role === "admin" ? "admin" : "user",
+  };
+}
+
+function isAdmin(actor) {
+  return actor.role === "admin";
+}
+
+function canAccess(actor, row) {
+  if (!row) return false;
+  return isAdmin(actor) || (!!row.created_by_user_id && row.created_by_user_id === actor.id);
+}
+
+// Για queries στα asks: επιστρέφει επιπλέον WHERE clause για non-admin.
+function askScope(actor) {
+  return isAdmin(actor)
+    ? { sql: "", binds: [] }
+    : { sql: " AND created_by_user_id = ?", binds: [actor.id] };
+}
+
+async function getAccessibleProject(env, actor, projectId) {
+  if (!projectId) return null;
+  const project = await getProjectById(env, projectId);
+  return canAccess(actor, project) ? project : null;
+}
+
+async function getAccessibleAsk(env, actor, askId) {
+  const ask = await env.DB.prepare(
+    "SELECT id, project_id, created_by_user_id FROM asks WHERE id = ?"
+  ).bind(askId).first();
+  return canAccess(actor, ask) ? ask : null;
 }
 
 function slugify(name) {
@@ -363,7 +464,7 @@ async function getProjectById(env, id) {
   return await env.DB.prepare("SELECT * FROM projects WHERE id = ?").bind(id).first();
 }
 
-async function createProject(env, name) {
+async function createProject(env, name, createdByUserId) {
   const trimmedName = (name || "").trim();
   if (!trimmedName) throw new Error("Το όνομα του project είναι υποχρεωτικό");
 
@@ -378,10 +479,10 @@ async function createProject(env, name) {
 
   const id = uid();
   await env.DB.prepare(
-    "INSERT INTO projects (id, name, inbox_alias) VALUES (?, ?, ?)"
-  ).bind(id, trimmedName, candidate).run();
+    "INSERT INTO projects (id, name, inbox_alias, created_by_user_id) VALUES (?, ?, ?, ?)"
+  ).bind(id, trimmedName, candidate, createdByUserId).run();
 
-  return { id, name: trimmedName, inbox_alias: candidate };
+  return { id, name: trimmedName, inbox_alias: candidate, created_by_user_id: createdByUserId };
 }
 
 async function deleteProject(env, projectId) {
@@ -470,7 +571,7 @@ function owner_user_id_in_item(item) {
   return Object.prototype.hasOwnProperty.call(item, "owner_user_id");
 }
 
-async function commitCapture(env, { projectId, body, items, createdBy }) {
+async function commitCapture(env, { projectId, body, items, createdBy, createdByUserId }) {
   const project = await getProjectById(env, projectId);
   if (!project) throw new Error("Project not found");
 
@@ -483,10 +584,10 @@ async function commitCapture(env, { projectId, body, items, createdBy }) {
   for (const item of items) {
     const askId = uid();
     await env.DB.prepare(
-      `INSERT INTO asks (id, project_id, source_id, title, owner, requested_by, created_by, due_date, status, source_quote)
-       VALUES (?,?,?,?,?,?,?,?, 'open', ?)`
+      `INSERT INTO asks (id, project_id, source_id, title, owner, requested_by, created_by, created_by_user_id, due_date, status, source_quote)
+       VALUES (?,?,?,?,?,?,?,?,?, 'open', ?)`
     ).bind(
-      askId, project.id, sourceId, item.title, item.owner, "", createdBy,
+      askId, project.id, sourceId, item.title, item.owner, "", createdBy, createdByUserId,
       item.due_date || null, item.quote
     ).run();
 
@@ -753,6 +854,11 @@ export default {
       if (!env.BETTER_AUTH_SECRET) {
         return json({ error: "Authentication is not configured" }, 503);
       }
+      // Υπάρχοντα sessions λογαριασμών εκτός επιτρεπτού domain -> το UI τα βλέπει ως αποσυνδεδεμένα.
+      if (path === "/api/auth/get-session") {
+        const existing = await getSession(env, request);
+        if (existing && !isEmailAllowed(env, existing.user?.email)) return json(null);
+      }
       return createAuth(env).handler(request);
     }
 
@@ -773,12 +879,17 @@ export default {
         if (session instanceof Response) return session;
       }
       const sessionEmail = session?.user?.email || "";
+      const actor = session ? getActor(session) : null;
 
       // --- Projects: λίστα ---
       if (path === "/api/projects" && request.method === "GET") {
-        const { results } = await env.DB.prepare(
-          "SELECT id, name, inbox_alias, created_at FROM projects ORDER BY created_at"
-        ).all();
+        const { results } = isAdmin(actor)
+          ? await env.DB.prepare(
+              "SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects ORDER BY created_at"
+            ).all()
+          : await env.DB.prepare(
+              "SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects WHERE created_by_user_id = ? ORDER BY created_at"
+            ).bind(actor.id).all();
         return json(results || []);
       }
 
@@ -786,7 +897,7 @@ export default {
       if (path === "/api/projects" && request.method === "POST") {
         const b = await request.json();
         try {
-          const project = await createProject(env, b.name);
+          const project = await createProject(env, b.name, actor.id);
           return json(project);
         } catch (e) {
           return json({ error: e.message || "Αποτυχία δημιουργίας project" }, 400);
@@ -796,6 +907,9 @@ export default {
       // --- Projects: διαγραφή ---
       if (path.match(/^\/api\/projects\/[^/]+$/) && request.method === "DELETE") {
         const projectId = path.split("/")[3];
+        if (!(await getAccessibleProject(env, actor, projectId))) {
+          return json({ error: "Το project δεν βρέθηκε" }, 404);
+        }
         try {
           await deleteProject(env, projectId);
           return json({ ok: true });
@@ -808,10 +922,14 @@ export default {
       if (path === "/api/dashboard" && request.method === "GET") {
         const projectId = url.searchParams.get("project_id");
         if (!projectId) return json({ error: "project_id απαιτείται" }, 400);
+        if (!(await getAccessibleProject(env, actor, projectId))) {
+          return json({ error: "Project not found" }, 404);
+        }
 
+        const scope = askScope(actor);
         const { results } = await env.DB.prepare(
-          "SELECT * FROM asks WHERE project_id = ?"
-        ).bind(projectId).all();
+          "SELECT * FROM asks WHERE project_id = ?" + scope.sql
+        ).bind(projectId, ...scope.binds).all();
 
         return json(buildDashboard(results || [], todayStr));
       }
@@ -821,17 +939,18 @@ export default {
         const projectId = url.searchParams.get("project_id");
         if (!projectId) return json({ error: "project_id απαιτείται" }, 400);
 
-        const project = await getProjectById(env, projectId);
+        const project = await getAccessibleProject(env, actor, projectId);
         if (!project) return json({ error: "Project not found" }, 404);
 
         const weekly = url.searchParams.get("range") === "week";
-        let query = "SELECT * FROM asks WHERE project_id = ?";
-        let binds = [projectId];
+        const scope = askScope(actor);
+        let query = "SELECT * FROM asks WHERE project_id = ?" + scope.sql;
+        let binds = [projectId, ...scope.binds];
         let window = null;
         if (weekly) {
           window = getWeeklySummaryWindow(todayStr);
           query += " AND (created_at BETWEEN ? AND ? OR (due_date < ? AND status != 'done'))";
-          binds = [projectId, window.start, window.end, todayStr];
+          binds = [...binds, window.start, window.end, todayStr];
         }
 
         const { results } = await env.DB.prepare(query).bind(...binds).all();
@@ -847,12 +966,13 @@ export default {
         const projectId = url.searchParams.get("project_id");
         if (!projectId) return json({ error: "project_id απαιτείται" }, 400);
 
-        const project = await getProjectById(env, projectId);
+        const project = await getAccessibleProject(env, actor, projectId);
         if (!project) return json({ error: "Project not found" }, 404);
 
+        const scope = askScope(actor);
         const { results } = await env.DB.prepare(
-          "SELECT * FROM asks WHERE project_id = ?"
-        ).bind(projectId).all();
+          "SELECT * FROM asks WHERE project_id = ?" + scope.sql
+        ).bind(projectId, ...scope.binds).all();
         const asks = withComputedOverdue(results || [], todayStr);
         return json(await buildAIInsights(env, project, asks, todayStr));
       }
@@ -862,9 +982,13 @@ export default {
         const projectId = url.searchParams.get("project_id");
         const status = url.searchParams.get("status");
 
-        let query = "SELECT * FROM asks WHERE 1=1";
-        const binds = [];
+        const scope = askScope(actor);
+        let query = "SELECT * FROM asks WHERE 1=1" + scope.sql;
+        const binds = [...scope.binds];
         if (projectId) {
+          if (!(await getAccessibleProject(env, actor, projectId))) {
+            return json({ error: "Project not found" }, 404);
+          }
           query += " AND project_id = ?";
           binds.push(projectId);
         }
@@ -887,14 +1011,18 @@ export default {
       // --- Asks: δημιουργία με το χέρι ---
       if (path === "/api/asks" && request.method === "POST") {
         const b = await request.json();
-        const projectId = b.project_id || "demo";
+        const title = String(b.title || "").trim();
+        if (!title) return json({ error: "Το title είναι υποχρεωτικό" }, 400);
+        const project = await getAccessibleProject(env, actor, b.project_id);
+        if (!project) return json({ error: "Project not found" }, 404);
+
         const id = uid();
         await env.DB.prepare(
-          `INSERT INTO asks (id, project_id, title, owner, requested_by, created_by, due_date)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO asks (id, project_id, title, owner, requested_by, created_by, created_by_user_id, due_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         ).bind(
-          id, projectId, b.title, b.owner || "", b.requested_by || "",
-          sessionEmail, b.due_date || null
+          id, project.id, title, b.owner || "", b.requested_by || "",
+          sessionEmail, actor.id, b.due_date || null
         ).run();
         return json({ id, ok: true });
       }
@@ -903,6 +1031,12 @@ export default {
       if (path.match(/^\/api\/asks\/[^/]+\/status$/) && request.method === "POST") {
         const askId = path.split("/")[3];
         const b = await request.json();
+        if (!["open", "accepted", "done"].includes(b.status)) {
+          return json({ error: "Μη έγκυρο status" }, 400);
+        }
+        if (!(await getAccessibleAsk(env, actor, askId))) {
+          return json({ error: "Το ask δεν βρέθηκε" }, 404);
+        }
         await env.DB.prepare("UPDATE asks SET status = ? WHERE id = ?")
           .bind(b.status, askId).run();
         await env.DB.prepare(
@@ -920,18 +1054,13 @@ export default {
         const owner = String(body.owner || "").trim();
         const dueDate = body.due_date || null;
         const status = String(body.status || "open");
-        const requester = sessionEmail;
         const allowedStatuses = ["open", "accepted", "done"];
 
         if (!title) return json({ error: "Το title είναι υποχρεωτικό" }, 400);
         if (!allowedStatuses.includes(status)) return json({ error: "Μη έγκυρο status" }, 400);
 
-        const existing = await env.DB.prepare(
-          "SELECT id, created_by FROM asks WHERE id = ?"
-        ).bind(askId).first();
-        if (!existing) return json({ error: "Το ask δεν βρέθηκε" }, 404);
-        if (!canModify(existing.created_by, requester)) {
-          return json({ error: "Μόνο ο δημιουργός αυτού του ask μπορεί να το επεξεργαστεί" }, 403);
+        if (!(await getAccessibleAsk(env, actor, askId))) {
+          return json({ error: "Το ask δεν βρέθηκε" }, 404);
         }
 
         await env.DB.prepare(
@@ -948,14 +1077,9 @@ export default {
       // --- Διαγραφή (delete) ask ---
       if (path.match(/^\/api\/asks\/[^/]+$/) && request.method === "DELETE") {
         const askId = path.split("/")[3];
-        const requester = sessionEmail;
 
-        const existing = await env.DB.prepare(
-          "SELECT id, created_by FROM asks WHERE id = ?"
-        ).bind(askId).first();
-        if (!existing) return json({ error: "Το ask δεν βρέθηκε" }, 404);
-        if (!canModify(existing.created_by, requester)) {
-          return json({ error: "Μόνο ο δημιουργός αυτού του ask μπορεί να το διαγράψει" }, 403);
+        if (!(await getAccessibleAsk(env, actor, askId))) {
+          return json({ error: "Το ask δεν βρέθηκε" }, 404);
         }
 
         await env.DB.batch([
@@ -974,7 +1098,7 @@ export default {
 
         try {
           const body = validateCaptureBody(b.body);
-          const project = await getProjectById(env, projectId);
+          const project = await getAccessibleProject(env, actor, projectId);
           if (!project) return json({ error: "Project not found" }, 404);
           const items = await extractItems(env, body);
           return json({
@@ -992,6 +1116,9 @@ export default {
         const b = await request.json();
         const projectId = typeof b.project_id === "string" ? b.project_id.trim() : "";
         if (!projectId) return json({ error: "project_id απαιτείται" }, 400);
+        if (!(await getAccessibleProject(env, actor, projectId))) {
+          return json({ error: "Project not found" }, 404);
+        }
 
         try {
           const body = validateCaptureBody(b.body);
@@ -1001,6 +1128,7 @@ export default {
             body,
             items,
             createdBy: sessionEmail,
+            createdByUserId: actor.id,
           });
           return json(result);
         } catch (e) {

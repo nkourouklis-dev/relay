@@ -182,7 +182,7 @@
   <select id="projectSelect" class="sidebar-project" aria-label="Current project"></select>
   <div class="sidebar-nav" style="margin-top:8px">
     <button type="button" onclick="createProject()"><span class="nav-icon">＋</span>New project</button>
-    <button type="button" onclick="deleteCurrentProject()"><span class="nav-icon">⌫</span>Delete project</button>
+    <button type="button" class="delete-project-action" onclick="deleteCurrentProject()"><span class="nav-icon">⌫</span>Delete project</button>
   </div>
   <div class="sidebar-spacer"></div>
   <div class="sidebar-nav">
@@ -205,7 +205,7 @@
   <div class="row">
     <label style="font-size:13px;color:var(--grey)">Project:</label>
     <button class="secondary" onclick="createProject()">+ Νέο project</button>
-    <button class="danger-outline" onclick="deleteCurrentProject()">🗑 Διαγραφή project</button>
+    <button class="danger-outline delete-project-action" onclick="deleteCurrentProject()">🗑 Διαγραφή project</button>
   </div>
 
   <div class="tabs">
@@ -255,6 +255,9 @@
 <script>
 let filter = "";
 let currentUser = "";
+let currentUserId = "";
+let currentRole = "user";
+let projectsById = {};
 let currentProject = localStorage.getItem("relay_project") || "";
 let capturePreviewItems = [];
 let capturePreviewBody = "";
@@ -289,6 +292,8 @@ function renderWhoAmI() {
 
 function showLogin(message, className) {
   currentUser = "";
+  currentUserId = "";
+  currentRole = "user";
   document.getElementById("authView").hidden = false;
   document.getElementById("app").hidden = true;
   renderWhoAmI();
@@ -302,6 +307,8 @@ function showLogin(message, className) {
 
 function showApp(session) {
   currentUser = session.user.email;
+  currentUserId = session.user.id || "";
+  currentRole = session.user.role === "admin" ? "admin" : "user";
   document.getElementById("authView").hidden = true;
   document.getElementById("app").hidden = false;
   renderWhoAmI();
@@ -346,16 +353,19 @@ async function requestMagicLink(event) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email: email, callbackURL: "/" }),
     });
-    if (!response.ok) throw new Error();
+    if (!response.ok) {
+      const errorBody = await response.json().catch(function() { return {}; });
+      throw new Error(response.status === 403 && errorBody.message ? errorBody.message : "");
+    }
     document.getElementById("loginForm").hidden = true;
     document.getElementById("authIntro").textContent = "Αν υπάρχει λογαριασμός για αυτό το email, θα λάβεις σύνδεσμο στα εισερχόμενά σου.";
     messageEl.className = "auth-message auth-success";
     messageEl.textContent = "Έλεγξε τα εισερχόμενά σου για το link σύνδεσης.";
-  } catch {
+  } catch (error) {
     button.disabled = false;
     button.textContent = "Στείλε link";
     messageEl.className = "auth-message auth-error";
-    messageEl.textContent = "Δεν ήταν δυνατή η αποστολή. Δοκίμασε ξανά αργότερα.";
+    messageEl.textContent = (error && error.message) || "Δεν ήταν δυνατή η αποστολή. Δοκίμασε ξανά αργότερα.";
   }
 }
 
@@ -367,9 +377,19 @@ async function logout() {
   }
 }
 
-function isOwner(ask) {
-  if (!ask.created_by || ask.created_by.trim() === "") return true;
-  return ask.created_by.trim().toLowerCase() === currentUser.trim().toLowerCase();
+// Καθρεφτίζει τον server-side κανόνα (Φάση 1): admin ή created_by_user_id = ο τρέχων χρήστης.
+// Ο server ελέγχει ξανά σε κάθε request — αυτό αφορά μόνο το τι εμφανίζεται.
+function canManage(record) {
+  if (currentRole === "admin") return true;
+  return !!(record && record.created_by_user_id && record.created_by_user_id === currentUserId);
+}
+
+function updateProjectActions() {
+  const allowed = !!currentProject && canManage(projectsById[currentProject]);
+  document.querySelectorAll(".delete-project-action").forEach(function(button) {
+    // style.display αντί για hidden: το .sidebar-nav button έχει display:flex που υπερισχύει του [hidden].
+    button.style.display = allowed ? "" : "none";
+  });
 }
 
 // ---------- Projects ----------
@@ -377,9 +397,13 @@ async function loadProjects() {
   const res = await fetch("/api/projects");
   const projects = await res.json();
   const select = document.getElementById("projectSelect");
+  projectsById = {};
+  (Array.isArray(projects) ? projects : []).forEach(function(p) { projectsById[p.id] = p; });
 
   if (!projects.length) {
     select.innerHTML = "<option value=''>(κανένα project ακόμα)</option>";
+    currentProject = "";
+    updateProjectActions();
     return;
   }
 
@@ -394,6 +418,7 @@ async function loadProjects() {
     .join("");
 
   localStorage.setItem("relay_project", currentProject);
+  updateProjectActions();
 }
 
 async function createProject() {
@@ -798,11 +823,11 @@ async function load() {
   }
 
   list.innerHTML = asks.map(function(ask) {
-    const canEdit = isOwner(ask);
+    const canEdit = canManage(ask);
     const editDeleteButtons = canEdit
       ? '<button class="edit-button" onclick=\'showEdit(' + JSON.stringify(ask) + ')\'>Edit</button>' +
         '<button class="delete-button" onclick="deleteAsk(\'' + ask.id + '\')">Delete</button>'
-      : '<span class="locked-note">🔒 μόνο ο/η ' + esc(ask.created_by) + '</span>';
+      : '<span class="locked-note">🔒 μόνο ο δημιουργός ή admin</span>';
 
     const overdueBadge = ask.is_overdue
       ? '<span class="pill overduebadge">⚠️ Καθυστερημένο</span>'
@@ -1139,6 +1164,7 @@ document.addEventListener("keydown", function(event) {
 document.getElementById("projectSelect").addEventListener("change", function(e) {
   currentProject = e.target.value;
   localStorage.setItem("relay_project", currentProject);
+  updateProjectActions();
   load();
 });
 
