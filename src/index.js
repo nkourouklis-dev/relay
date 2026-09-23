@@ -423,6 +423,54 @@ async function annotateAskPermissions(env, actor, rows) {
   }));
 }
 
+// ---------- Ideas (ported from the retired iBOX prototype) ----------
+// Same status vocabulary as iBOX's "iBOX Ideas" SharePoint list — kept
+// because it already fits KAFKAS's internal review pipeline.
+const IDEA_STATUSES = [
+  "Υποβλήθηκε",
+  "Υπό Προέλεγχο",
+  "Υπό Αξιολόγηση",
+  "Εγκεκριμένη",
+  "Σε Υλοποίηση",
+  "Ολοκληρωμένη",
+  "Απορριφθείσα",
+  "Σε Αναμονή",
+];
+
+// { idea, canView, canManage } — canView: μέλος/owner project ή δημιουργός/owner της ιδέας.
+async function getIdeaAccess(env, actor, ideaId) {
+  const idea = await env.DB.prepare("SELECT * FROM relay_ideas WHERE id = ?").bind(ideaId).first();
+  if (!idea) return { idea: null, canView: false, canManage: false };
+  if (isAdmin(actor) || idea.owner_user_id === actor.id || idea.created_by_user_id === actor.id) {
+    return { idea, canView: true, canManage: true };
+  }
+  const project = await getAccessibleProject(env, actor, idea.project_id);
+  return { idea, canView: !!project, canManage: false };
+}
+
+async function insertIdeaEvent(env, { ideaId, actorUserId, type, fromStatus, toStatus, note }) {
+  await env.DB.prepare(
+    `INSERT INTO relay_idea_events (id, idea_id, actor_user_id, type, from_status, to_status, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).bind(uid(), ideaId, actorUserId, type, fromStatus || null, toStatus, note || null).run();
+}
+
+// Server-side per-user XP/badges (not per-browser localStorage — this is a
+// real multi-user product). Idempotent-ish: badge keys only added once.
+async function awardXp(env, userId, amount, badgeKey) {
+  const now = new Date().toISOString();
+  const existing = await env.DB.prepare("SELECT xp, badges_json FROM relay_gamification WHERE user_id = ?")
+    .bind(userId).first();
+  const badges = existing ? JSON.parse(existing.badges_json || "[]") : [];
+  if (badgeKey && !badges.includes(badgeKey)) badges.push(badgeKey);
+  const xp = (existing ? existing.xp : 0) + amount;
+  await env.DB.prepare(
+    `INSERT INTO relay_gamification (user_id, xp, badges_json, updated_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET xp = excluded.xp, badges_json = excluded.badges_json, updated_at = excluded.updated_at`
+  ).bind(userId, xp, JSON.stringify(badges), now).run();
+  return { xp, badges };
+}
+
 // ---------- Project members ----------
 const MEMBER_EMAIL_PATTERN = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]{2,}$/;
 const MAX_MEMBERS_PER_REQUEST = 50;
@@ -1539,7 +1587,10 @@ export default {
         path === "/api/dashboard/summary" ||
         path === "/api/dashboard/insights" ||
         path === "/api/capture/preview" ||
-        path === "/api/capture/commit";
+        path === "/api/capture/commit" ||
+        path === "/api/ideas" ||
+        path.startsWith("/api/ideas/") ||
+        path === "/api/gamification/me";
       let session = null;
       if (protectedRoute) {
         session = await requireSession(env, request);
@@ -1886,6 +1937,115 @@ export default {
         ]);
 
         return json({ ok: true, id: askId });
+      }
+
+      // --- Ideas: λίστα (scoped στο project/team, όχι δημόσιο) ---
+      if (path === "/api/ideas" && request.method === "GET") {
+        const projectId = url.searchParams.get("project_id");
+        const project = await getAccessibleProject(env, actor, projectId);
+        if (!project) return json({ error: "Project not found" }, 404);
+
+        const { results } = await env.DB.prepare(
+          `SELECT i.*, u.email AS owner_email, u.name AS owner_name
+           FROM relay_ideas i JOIN relay_users u ON u.id = i.owner_user_id
+           WHERE i.project_id = ? ORDER BY i.created_at DESC`
+        ).bind(project.id).all();
+        return json(results || []);
+      }
+
+      // --- Ideas: επισκόπηση ανά status (dashboard-style tally) ---
+      if (path === "/api/ideas/summary" && request.method === "GET") {
+        const projectId = url.searchParams.get("project_id");
+        const project = await getAccessibleProject(env, actor, projectId);
+        if (!project) return json({ error: "Project not found" }, 404);
+
+        const { results } = await env.DB.prepare(
+          "SELECT status, COUNT(*) AS count FROM relay_ideas WHERE project_id = ? GROUP BY status"
+        ).bind(project.id).all();
+        const byStatus = {};
+        let total = 0;
+        for (const row of results || []) {
+          byStatus[row.status] = row.count;
+          total += row.count;
+        }
+        return json({ total, byStatus });
+      }
+
+      // --- Ideas: δημιουργία ---
+      if (path === "/api/ideas" && request.method === "POST") {
+        const b = await request.json().catch(() => ({}));
+        const title = String(b.title || "").trim();
+        if (!title) return json({ error: "Ο τίτλος είναι υποχρεωτικός" }, 400);
+        const project = await getAccessibleProject(env, actor, b.project_id);
+        if (!project) return json({ error: "Project not found" }, 404);
+
+        const id = uid();
+        await env.DB.prepare(
+          `INSERT INTO relay_ideas
+             (id, project_id, title, category, problem, proposed_solution, expected_benefit, status, owner_user_id, created_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'Υποβλήθηκε', ?, ?)`
+        ).bind(
+          id, project.id, title,
+          String(b.category || "Γενική πρόταση").trim(),
+          String(b.problem || "").trim(),
+          String(b.proposed_solution || "").trim(),
+          String(b.expected_benefit || "").trim(),
+          actor.id, actor.id
+        ).run();
+
+        await insertIdeaEvent(env, {
+          ideaId: id, actorUserId: actor.id, type: "created", toStatus: "Υποβλήθηκε",
+          note: "Αρχική υποβολή",
+        });
+        const gami = await awardXp(env, actor.id, 15, "🚀");
+        return json({ id, ok: true, gamification: gami });
+      }
+
+      // --- Ideas: αλλαγή status ---
+      if (path.match(/^\/api\/ideas\/[^/]+\/status$/) && request.method === "POST") {
+        const ideaId = path.split("/")[3];
+        const b = await request.json().catch(() => ({}));
+        if (!IDEA_STATUSES.includes(b.status)) return json({ error: "Μη έγκυρο status" }, 400);
+
+        const access = await getIdeaAccess(env, actor, ideaId);
+        if (!access.canView) return json({ error: "Η ιδέα δεν βρέθηκε" }, 404);
+        if (!access.canManage) {
+          return json({ error: "Αλλαγή status μόνο από τον owner της ιδέας, τον δημιουργό ή admin." }, 403);
+        }
+
+        const fromStatus = access.idea.status;
+        await env.DB.prepare("UPDATE relay_ideas SET status = ?, updated_at = datetime('now') WHERE id = ?")
+          .bind(b.status, ideaId).run();
+        await insertIdeaEvent(env, {
+          ideaId, actorUserId: actor.id, type: "status_changed",
+          fromStatus, toStatus: b.status, note: b.reason || null,
+        });
+
+        const bigMilestone = ["Εγκεκριμένη", "Ολοκληρωμένη"].includes(b.status);
+        const gami = await awardXp(env, actor.id, bigMilestone ? 40 : 10, bigMilestone ? "🏆" : undefined);
+        return json({ ok: true, gamification: gami });
+      }
+
+      // --- Ideas: audit trail μίας ιδέας ---
+      if (path.match(/^\/api\/ideas\/[^/]+\/events$/) && request.method === "GET") {
+        const ideaId = path.split("/")[3];
+        const access = await getIdeaAccess(env, actor, ideaId);
+        if (!access.canView) return json({ error: "Η ιδέα δεν βρέθηκε" }, 404);
+
+        const { results } = await env.DB.prepare(
+          `SELECT e.*, u.email AS actor_email, u.name AS actor_name
+           FROM relay_idea_events e JOIN relay_users u ON u.id = e.actor_user_id
+           WHERE e.idea_id = ? ORDER BY e.created_at DESC`
+        ).bind(ideaId).all();
+        return json(results || []);
+      }
+
+      // --- Gamification: το προφίλ XP/badges του συνδεδεμένου χρήστη ---
+      if (path === "/api/gamification/me" && request.method === "GET") {
+        const row = await env.DB.prepare("SELECT xp, badges_json FROM relay_gamification WHERE user_id = ?")
+          .bind(actor.id).first();
+        const xp = row ? row.xp : 0;
+        return json({ xp, level: Math.floor(xp / 100) + 1, badges: row ? JSON.parse(row.badges_json || "[]") : [] });
       }
 
       // --- Capture preview ---

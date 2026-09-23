@@ -190,6 +190,46 @@ CREATE INDEX idx_reminders_due ON relay_reminders(status, remind_at);
 CREATE INDEX idx_projects_created_by_user ON projects(created_by_user_id);
 CREATE INDEX idx_asks_created_by_user ON asks(created_by_user_id);
 
+-- Team ideas (βλ. migrate_add_ideas.sql) — ported from the retired iBOX
+-- prototype, scoped internally per project/team.
+CREATE TABLE relay_ideas (
+  id                 TEXT PRIMARY KEY,
+  project_id         TEXT NOT NULL REFERENCES projects(id),
+  title              TEXT NOT NULL,
+  category           TEXT NOT NULL DEFAULT 'Γενική πρόταση',
+  problem            TEXT NOT NULL DEFAULT '',
+  proposed_solution  TEXT NOT NULL DEFAULT '',
+  expected_benefit   TEXT NOT NULL DEFAULT '',
+  status             TEXT NOT NULL DEFAULT 'Υποβλήθηκε',
+  owner_user_id      TEXT NOT NULL REFERENCES relay_users(id),
+  created_by_user_id TEXT NOT NULL REFERENCES relay_users(id),
+  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_ideas_project ON relay_ideas(project_id);
+CREATE INDEX idx_ideas_owner ON relay_ideas(owner_user_id);
+CREATE INDEX idx_ideas_status ON relay_ideas(status);
+
+CREATE TABLE relay_idea_events (
+  id            TEXT PRIMARY KEY,
+  idea_id       TEXT NOT NULL REFERENCES relay_ideas(id) ON DELETE CASCADE,
+  actor_user_id TEXT NOT NULL REFERENCES relay_users(id),
+  type          TEXT NOT NULL,
+  from_status   TEXT,
+  to_status     TEXT NOT NULL,
+  note          TEXT,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_idea_events_idea ON relay_idea_events(idea_id);
+CREATE INDEX idx_idea_events_actor ON relay_idea_events(actor_user_id);
+
+CREATE TABLE relay_gamification (
+  user_id     TEXT PRIMARY KEY REFERENCES relay_users(id) ON DELETE CASCADE,
+  xp          INTEGER NOT NULL DEFAULT 0,
+  badges_json TEXT NOT NULL DEFAULT '[]',
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Demo δεδομένα για να δεις κάτι αμέσως
 INSERT INTO projects (id, name, owner_email, inbox_alias)
 VALUES ('demo', 'Demo Project', 'you@example.com', 'demo');

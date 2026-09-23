@@ -64,6 +64,8 @@
     header span.tagline{color:var(--grey);font-size:13px}
     header .spacer{flex:1}
     #whoami{font-size:13px;color:var(--grey);cursor:pointer;text-decoration:underline dotted}
+    .gami-badge-header{font-size:12px;font-weight:600;color:var(--v-strong);background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:4px 10px;margin-right:6px}
+    .gami-badge-header:empty{display:none}
     main{max-width:1000px;margin:0 auto;padding:26px}
     #app.app-shell{max-width:none;margin:0;padding:28px 36px 72px 304px}
     .workspace-content{max-width:1120px;margin:0 auto}
@@ -246,6 +248,7 @@
   <button id="mobileMenuButton" class="mobile-menu" type="button" aria-label="Άνοιγμα μενού" aria-controls="appSidebar" aria-expanded="false">☰</button>
   <b>Relay</b><img class="header-kafkas" src="/brand/kafkas-logo.png" alt="ΚΑΥΚΑΣ" width="150" height="20" /><span class="tagline">Από τις συζητήσεις σε ενέργειες</span>
   <div class="spacer"></div>
+  <span id="gamiBadge" class="gami-badge-header"></span>
   <span id="whoami"></span>
   <button id="logoutButton" class="secondary" type="button" style="display:none">Αποσύνδεση</button>
 </header>
@@ -256,6 +259,7 @@
     <button type="button" class="active" id="sidebarAllAsksButton" onclick="selectAllAsks()"><span class="nav-icon">▦</span>Όλα τα asks</button>
     <button type="button" id="sidebarDashboardButton" onclick="selectDashboard()"><span class="nav-icon">◫</span>Dashboard</button>
     <button type="button" onclick="openAIInsights()"><span class="nav-icon">🤖</span>AI Insights</button>
+    <button type="button" id="sidebarIdeasButton" onclick="selectIdeas()"><span class="nav-icon">💡</span>Ιδέες ομάδας</button>
   </nav>
   <div class="sidebar-label">Project</div>
   <label class="sidebar-project-label" for="projectSelect">Current project</label>
@@ -303,6 +307,7 @@
     <button data-f="accepted">Αποδεκτά</button>
     <button data-f="done">Ολοκληρωμένα</button>
     <button data-f="__dashboard__">📊 Dashboard</button>
+    <button data-f="__ideas__">💡 Ιδέες</button>
   </div>
   <div class="legend" id="tabsLegend">
     ℹ️ Accept = ανάληψη ask · Done = ολοκληρώθηκε · 🔒 = επεξεργασία μόνο από τον δημιουργό του ask/project ή admin
@@ -323,6 +328,7 @@
   </div>
 
   <div id="dashboardView" style="display:none"></div>
+  <div id="ideasView" style="display:none"></div>
   <div id="list"></div>
 
   <div id="createSection">
@@ -452,6 +458,7 @@ function showApp(session) {
   document.getElementById("authView").hidden = true;
   document.getElementById("app").hidden = false;
   renderWhoAmI();
+  loadGamificationBadge();
   loadProjects().then(load);
 }
 
@@ -982,13 +989,21 @@ async function exportPPT() {
 // ---------- Asks ----------
 async function load() {
   const isDashboard = filter === "__dashboard__";
+  const isIdeas = filter === "__ideas__";
   syncNavActiveState(isDashboard);
+  document.getElementById("sidebarIdeasButton").classList.toggle("active", isIdeas);
   document.getElementById("dashboardView").style.display = isDashboard ? "block" : "none";
-  document.getElementById("list").style.display = isDashboard ? "none" : "block";
-  document.getElementById("createSection").style.display = isDashboard ? "none" : "block";
+  document.getElementById("ideasView").style.display = isIdeas ? "block" : "none";
+  document.getElementById("list").style.display = (isDashboard || isIdeas) ? "none" : "block";
+  document.getElementById("createSection").style.display = (isDashboard || isIdeas) ? "none" : "block";
 
   if (isDashboard) {
     await loadDashboard();
+    return;
+  }
+
+  if (isIdeas) {
+    await loadIdeasView();
     return;
   }
 
@@ -1589,6 +1604,12 @@ function selectDashboard() {
   closeDrawer();
 }
 
+function selectIdeas() {
+  const tab = document.querySelector('.tabs button[data-f="__ideas__"]');
+  if (tab) tab.click();
+  closeDrawer();
+}
+
 function openDrawer() {
   const sidebar = document.getElementById("appSidebar");
   const backdrop = document.getElementById("drawerBackdrop");
@@ -1637,6 +1658,200 @@ function syncNavActiveState(isDashboard) {
   toggle("sidebarDashboardButton", isDashboard);
   toggle("navAsksButton", asksActive);
   toggle("navDashboardButton", isDashboard);
+}
+
+// ---------- Ideas (ported from the retired iBOX prototype, internal to Relay) ----------
+
+const IDEA_STATUS_CLASS = {
+  "Υποβλήθηκε": "blue",
+  "Υπό Προέλεγχο": "amber",
+  "Υπό Αξιολόγηση": "amber",
+  "Εγκεκριμένη": "green",
+  "Σε Υλοποίηση": "green",
+  "Ολοκληρωμένη": "green",
+  "Απορριφθείσα": "red",
+  "Σε Αναμονή": "amber",
+};
+let lastIdeas = [];
+
+async function loadIdeasView() {
+  const view = document.getElementById("ideasView");
+  if (!currentProject) {
+    view.innerHTML = "<p style='color:#5a6472'>Δημιούργησε πρώτα ένα project.</p>";
+    return;
+  }
+  view.innerHTML = "<p style='color:#5a6472'>Φόρτωση...</p>";
+
+  const [summaryRes, ideasRes] = await Promise.all([
+    fetch("/api/ideas/summary?project_id=" + encodeURIComponent(currentProject)),
+    fetch("/api/ideas?project_id=" + encodeURIComponent(currentProject)),
+  ]);
+  const summary = await summaryRes.json().catch(function () { return { total: 0, byStatus: {} }; });
+  const ideas = await ideasRes.json().catch(function () { return []; });
+  if (!Array.isArray(ideas)) {
+    view.innerHTML = "<p style='color:#5a6472'>" + esc((ideas && ideas.error) || "Σφάλμα φόρτωσης.") + "</p>";
+    return;
+  }
+  lastIdeas = ideas;
+
+  const byStatus = summary.byStatus || {};
+  const underReview = (byStatus["Υπό Προέλεγχο"] || 0) + (byStatus["Υπό Αξιολόγηση"] || 0);
+  const approved = byStatus["Εγκεκριμένη"] || 0;
+  const implemented = (byStatus["Σε Υλοποίηση"] || 0) + (byStatus["Ολοκληρωμένη"] || 0);
+
+  const statTiles = [
+    ["💡", summary.total || 0, "Σύνολο ιδεών (project)"],
+    ["🔍", underReview, "Υπό αξιολόγηση"],
+    ["✓", approved, "Εγκεκριμένες"],
+    ["🚀", implemented, "Σε υλοποίηση / ολοκληρωμένες"],
+  ].map(function (t) {
+    return '<div class="stat-card"><div class="stat-num">' + t[1] + '</div><div>' + t[0] + ' ' + t[2] + '</div></div>';
+  }).join("");
+
+  const createForm =
+    '<h3>➕ Νέα ιδέα</h3>' +
+    '<div class="row"><input id="ideaTitle" placeholder="Τίτλος" style="flex:2;min-width:220px"/>' +
+    '<input id="ideaCategory" placeholder="Κατηγορία (προαιρετικό)" style="flex:1;min-width:160px"/></div>' +
+    '<div class="row" style="margin-top:8px"><textarea id="ideaProblem" placeholder="Πρόβλημα" style="flex:1;min-height:60px"></textarea></div>' +
+    '<div class="row" style="margin-top:8px"><textarea id="ideaSolution" placeholder="Προτεινόμενη λύση" style="flex:1;min-height:60px"></textarea></div>' +
+    '<div class="row" style="margin-top:8px"><textarea id="ideaBenefit" placeholder="Αναμενόμενο όφελος" style="flex:1;min-height:60px"></textarea></div>' +
+    '<div class="row" style="margin-top:10px"><button onclick="addIdea()">Υποβολή ιδέας</button>' +
+    '<span id="ideaMsg" style="align-self:center;color:var(--grey)"></span></div>';
+
+  const cards = ideas.length
+    ? ideas.map(renderIdeaCard).join("")
+    : "<p style='color:#5a6472'>Δεν υπάρχουν ακόμα ιδέες σε αυτό το project.</p>";
+
+  view.innerHTML =
+    '<div class="stat-grid">' + statTiles + '</div>' +
+    '<div id="createSection">' + createForm + '</div>' +
+    '<h3 style="margin-top:20px">Ιδέες</h3>' + cards;
+}
+
+function renderIdeaCard(idea) {
+  const statusClass = IDEA_STATUS_CLASS[idea.status] || "blue";
+  const statusOptions = IDEA_STATUSES_CLIENT.map(function (s) {
+    return '<option value="' + esc(s) + '"' + (s === idea.status ? " selected" : "") + '>' + esc(s) + '</option>';
+  }).join("");
+  return (
+    '<div class="card st-' + statusClass + '" id="idea-' + esc(idea.id) + '">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div class="title">' + esc(idea.title) + '</div>' +
+        '<div class="chips">' +
+          '<span class="chip">👤 <b>' + esc(idea.owner_name || idea.owner_email || "—") + '</b></span>' +
+          '<span class="chip">🏷 ' + esc(idea.category || "—") + '</span>' +
+        '</div>' +
+        (idea.problem ? '<div class="quote">“' + esc(idea.problem) + '”</div>' : "") +
+        '<button class="secondary" style="margin-top:8px;font-size:11px" onclick="toggleIdeaEvents(\'' + esc(idea.id) + '\')">🕐 Ιστορικό ενεργειών</button>' +
+        '<div id="idea-events-' + esc(idea.id) + '" style="display:none;margin-top:8px"></div>' +
+      '</div>' +
+      '<div style="text-align:right;min-width:170px">' +
+        '<span class="pill ' + esc(idea.status) + '">' + esc(idea.status) + '</span>' +
+        '<select style="margin-top:8px;display:block" onchange="changeIdeaStatus(\'' + esc(idea.id) + '\', this.value)">' +
+          statusOptions +
+        '</select>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+const IDEA_STATUSES_CLIENT = [
+  "Υποβλήθηκε", "Υπό Προέλεγχο", "Υπό Αξιολόγηση", "Εγκεκριμένη",
+  "Σε Υλοποίηση", "Ολοκληρωμένη", "Απορριφθείσα", "Σε Αναμονή",
+];
+
+async function addIdea() {
+  const title = document.getElementById("ideaTitle").value.trim();
+  const msg = document.getElementById("ideaMsg");
+  if (!title) { msg.textContent = "Ο τίτλος είναι υποχρεωτικός."; return; }
+
+  const res = await fetch("/api/ideas", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      project_id: currentProject,
+      title: title,
+      category: document.getElementById("ideaCategory").value,
+      problem: document.getElementById("ideaProblem").value,
+      proposed_solution: document.getElementById("ideaSolution").value,
+      expected_benefit: document.getElementById("ideaBenefit").value,
+    }),
+  });
+  const data = await res.json().catch(function () { return {}; });
+  if (!res.ok) { msg.textContent = data.error || "Σφάλμα υποβολής."; return; }
+
+  if (data.gamification) showGamiToast(data.gamification, "🚀 Νέα ιδέα υποβλήθηκε!");
+  await loadIdeasView();
+  await loadGamificationBadge();
+}
+
+async function changeIdeaStatus(id, status) {
+  const res = await fetch("/api/ideas/" + encodeURIComponent(id) + "/status", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ status: status }),
+  });
+  const data = await res.json().catch(function () { return {}; });
+  if (res.ok && data.gamification) showGamiToast(data.gamification, "Κατάσταση ενημερώθηκε → " + status);
+  await loadIdeasView();
+  await loadGamificationBadge();
+}
+
+async function toggleIdeaEvents(id) {
+  const el = document.getElementById("idea-events-" + id);
+  if (!el) return;
+  if (el.style.display === "block") { el.style.display = "none"; return; }
+
+  el.style.display = "block";
+  el.innerHTML = "Φόρτωση...";
+  const res = await fetch("/api/ideas/" + encodeURIComponent(id) + "/events");
+  const events = await res.json().catch(function () { return []; });
+  if (!Array.isArray(events) || !events.length) {
+    el.innerHTML = "<p style='color:#5a6472;font-size:12px'>Δεν υπάρχει ιστορικό ακόμα.</p>";
+    return;
+  }
+  el.innerHTML = events.map(function (e) {
+    const who = e.actor_name || e.actor_email || "—";
+    const when = new Date(e.created_at).toLocaleString("el-GR");
+    const label = e.from_status ? ("Μετακίνηση σε «" + esc(e.to_status) + "»") : ("Δημιουργήθηκε (" + esc(e.to_status) + ")");
+    return '<div style="font-size:12px;border-top:1px solid var(--line);padding:6px 0"><b>' + esc(label) + '</b><br>' +
+      esc(when) + " · " + esc(who) + (e.note ? " · " + esc(e.note) : "") + '</div>';
+  }).join("");
+}
+
+function showToast(message) {
+  const el = document.getElementById("toast");
+  if (!el || !message) return;
+  el.textContent = message;
+  el.hidden = false;
+  window.clearTimeout(el._hideTimer);
+  el._hideTimer = window.setTimeout(function () { el.hidden = true; }, 3000);
+}
+
+// ---------- Gamification (server-side, per real user — see relay_gamification) ----------
+
+async function loadGamificationBadge() {
+  const el = document.getElementById("gamiBadge");
+  if (!currentUser) { el.textContent = ""; return; }
+  try {
+    const res = await fetch("/api/gamification/me");
+    if (!res.ok) { el.textContent = ""; return; }
+    const g = await res.json();
+    const badges = (g.badges || []).join(" ");
+    el.textContent = "Lvl " + g.level + " · " + g.xp + " XP " + badges;
+  } catch {
+    el.textContent = "";
+  }
+}
+
+function showGamiToast(gamification, fallbackMessage) {
+  const el = document.getElementById("gamiBadge");
+  if (el && gamification) {
+    el.textContent = "Lvl " + (Math.floor(gamification.xp / 100) + 1) + " · " + gamification.xp + " XP " + (gamification.badges || []).join(" ");
+  }
+  if (typeof showToast === "function") {
+    showToast(fallbackMessage);
+  }
 }
 
 document.getElementById("loginForm").addEventListener("submit", requestLoginCode);
