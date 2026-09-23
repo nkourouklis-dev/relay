@@ -2137,16 +2137,19 @@ export default {
     });
   },
 
+  // Ένα μόνο registered cron ("*/15 * * * *", βλ. wrangler.jsonc — Workers Free
+  // plan όριο 5/account). Το legacy daily cleanup ζει πλέον μέσα σε αυτό το
+  // ίδιο tick, μαζεμένο στο πρώτο 15λεπτο μετά τις 08:00 UTC.
   async scheduled(event, env, ctx) {
-    if (event.cron === "0 8 * * *") {
+    const now = new Date();
+    if (now.getUTCHours() === 8 && now.getUTCMinutes() < 15) {
       ctx.waitUntil(
         env.DB.prepare(`UPDATE asks SET status = 'open' WHERE status = 'overdue'`).run()
       );
-      return;
     }
     // Υπενθυμίσεις (κάθε 15 λεπτά): ένα digest email ανά project σε δημιουργό + μέλη.
     ctx.waitUntil(
-      dispatchDueReminders(env, new Date()).catch((error) => {
+      dispatchDueReminders(env, now).catch((error) => {
         console.log("Reminder dispatch failed", { error: String(error && error.message || error) });
       })
     );

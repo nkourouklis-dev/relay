@@ -43,8 +43,11 @@
     "remote": true
   },
 
-  // Χρονοπρογραμματισμός: 08:00 UTC legacy overdue cleanup + κάθε 15 λεπτά αποστολή υπενθυμίσεων
+  // Ένα και μοναδικό cron trigger (Workers Free plan: 5 ανά account, ήδη
+  // χρησιμοποιημένα από άλλα δικά μας projects) — κάθε 15 λεπτά στέλνει
+  // υπενθυμίσεις, και στο πρώτο tick μετά τις 08:00 UTC κάνει και το
+  // legacy overdue cleanup (βλ. scheduled() στο src/index.js).
   "triggers": {
-    "crons": ["0 8 * * *", "*/15 * * * *"]
+    "crons": ["*/15 * * * *"]
   }
 }
