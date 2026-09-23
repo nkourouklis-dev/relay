@@ -2040,6 +2040,26 @@ export default {
         return json(results || []);
       }
 
+      // --- Ideas: πρόσφατη δραστηριότητα σε όλο το project (activity ticker) ---
+      if (path === "/api/ideas/activity" && request.method === "GET") {
+        const projectId = url.searchParams.get("project_id");
+        const project = await getAccessibleProject(env, actor, projectId);
+        if (!project) return json({ error: "Project not found" }, 404);
+
+        const limit = Math.min(Number(url.searchParams.get("limit")) || 8, 30);
+        const { results } = await env.DB.prepare(
+          `SELECT e.type, e.from_status, e.to_status, e.created_at, e.idea_id,
+                  i.title AS idea_title, u.name AS actor_name, u.email AS actor_email
+           FROM relay_idea_events e
+           JOIN relay_ideas i ON i.id = e.idea_id
+           JOIN relay_users u ON u.id = e.actor_user_id
+           WHERE i.project_id = ?
+           ORDER BY e.created_at DESC
+           LIMIT ?`
+        ).bind(project.id, limit).all();
+        return json(results || []);
+      }
+
       // --- Gamification: το προφίλ XP/badges του συνδεδεμένου χρήστη ---
       if (path === "/api/gamification/me" && request.method === "GET") {
         const row = await env.DB.prepare("SELECT xp, badges_json FROM relay_gamification WHERE user_id = ?")

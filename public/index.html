@@ -64,8 +64,39 @@
     header span.tagline{color:var(--grey);font-size:13px}
     header .spacer{flex:1}
     #whoami{font-size:13px;color:var(--grey);cursor:pointer;text-decoration:underline dotted}
-    .gami-badge-header{font-size:12px;font-weight:600;color:var(--v-strong);background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:4px 10px;margin-right:6px}
-    .gami-badge-header:empty{display:none}
+    .ibox-xp-widget{display:flex;flex-direction:column;gap:3px;padding:6px 14px;border-radius:10px;background:var(--surface-soft);border:1px solid var(--line);min-width:150px;margin-right:8px}
+    .ibox-xp-widget:empty{display:none;margin:0;padding:0;border:0}
+    .ibox-xp-widget .xp-top{display:flex;justify-content:space-between;gap:10px;font-size:11px;font-weight:700;color:var(--v-strong);white-space:nowrap}
+    .ibox-xp-widget .xp-badges{font-size:11px}
+    .ibox-xp-widget .xp-track{height:5px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:4px}
+    .ibox-xp-widget .xp-fill{height:100%;background:linear-gradient(90deg,var(--s),var(--v));border-radius:3px;transition:width .3s ease}
+    .ibox-banner{background:linear-gradient(135deg,var(--v-strong),var(--v));color:#fff;border-radius:var(--radius);padding:22px 26px;margin-bottom:16px}
+    .ibox-banner h2{margin:0 0 4px;font-size:21px}
+    .ibox-banner p{margin:0;color:#c7d2e8;font-size:13px}
+    .ibox-ticker{display:flex;align-items:center;gap:10px;background:var(--greenbg);color:var(--green);border-radius:var(--radius-sm);padding:10px 16px;margin-bottom:16px;font-size:13px}
+    .ibox-ticker .dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex:0 0 auto;animation:ibox-pulse 1.6s infinite}
+    @keyframes ibox-pulse{0%,100%{opacity:1}50%{opacity:.3}}
+    .ibox-quick-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
+    .ibox-quick-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;cursor:pointer;transition:box-shadow .15s,transform .15s;text-align:left}
+    .ibox-quick-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px)}
+    .ibox-quick-card .icon{width:36px;height:36px;border-radius:9px;background:var(--v-strong);color:#fff;display:grid;place-items:center;font-size:17px;margin-bottom:9px}
+    .ibox-quick-card strong{display:block;font-size:13px}
+    .ibox-quick-card small{color:var(--grey);font-size:11px}
+    .ibox-quick-card.active{border-color:var(--v);box-shadow:0 0 0 2px rgba(36,59,122,.15)}
+    .ibox-stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:24px}
+    .ibox-stat-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;gap:14px}
+    .ibox-stat-ring{width:52px;height:52px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center}
+    .ibox-stat-ring span{width:38px;height:38px;border-radius:50%;background:var(--surface);display:grid;place-items:center;font-size:13px;font-weight:700;color:var(--ink)}
+    .ibox-stat-label{font-size:11px;color:var(--grey);text-transform:uppercase;letter-spacing:.03em}
+    .ibox-idea-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:22px}
+    .ibox-idea-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow-sm)}
+    .ibox-idea-card .tag-row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+    .ibox-idea-card .cat-tag{font-size:10px;font-weight:700;color:var(--v);background:var(--surface-soft);padding:3px 9px;border-radius:20px;white-space:nowrap}
+    .ibox-idea-card h4{margin:0 0 6px;font-size:14px}
+    .ibox-idea-card p{margin:0 0 10px;font-size:12px;color:var(--grey);line-height:1.5}
+    .ibox-idea-card .meta-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11px;color:var(--muted);flex-wrap:wrap}
+    .ibox-idea-card select{font-size:11px;padding:4px 6px}
+    .ibox-idea-card .events-toggle{background:transparent;border:0;color:var(--v);font-size:11px;padding:0;min-height:auto;cursor:pointer}
     main{max-width:1000px;margin:0 auto;padding:26px}
     #app.app-shell{max-width:none;margin:0;padding:28px 36px 72px 304px}
     .workspace-content{max-width:1120px;margin:0 auto}
@@ -248,7 +279,7 @@
   <button id="mobileMenuButton" class="mobile-menu" type="button" aria-label="Άνοιγμα μενού" aria-controls="appSidebar" aria-expanded="false">☰</button>
   <b>Relay</b><img class="header-kafkas" src="/brand/kafkas-logo.png" alt="ΚΑΥΚΑΣ" width="150" height="20" /><span class="tagline">Από τις συζητήσεις σε ενέργειες</span>
   <div class="spacer"></div>
-  <span id="gamiBadge" class="gami-badge-header"></span>
+  <div id="gamiBadge" class="ibox-xp-widget"></div>
   <span id="whoami"></span>
   <button id="logoutButton" class="secondary" type="button" style="display:none">Αποσύνδεση</button>
 </header>
@@ -1661,6 +1692,10 @@ function syncNavActiveState(isDashboard) {
 }
 
 // ---------- Ideas (ported from the retired iBOX prototype, internal to Relay) ----------
+// Dashboard-style layout inspired by the retired iBOX Lovable prototype, but
+// built only on data this backend actually has (ideas, per-idea audit trail,
+// gamification). No voting / leaderboard / rewards-catalog here — there is no
+// backend for those; adding the nav tabs without real data would be a fake UI.
 
 const IDEA_STATUS_CLASS = {
   "Υποβλήθηκε": "blue",
@@ -1672,7 +1707,31 @@ const IDEA_STATUS_CLASS = {
   "Απορριφθείσα": "red",
   "Σε Αναμονή": "amber",
 };
+const IDEA_STATUSES_CLIENT = [
+  "Υποβλήθηκε", "Υπό Προέλεγχο", "Υπό Αξιολόγηση", "Εγκεκριμένη",
+  "Σε Υλοποίηση", "Ολοκληρωμένη", "Απορριφθείσα", "Σε Αναμονή",
+];
 let lastIdeas = [];
+let ideaFilterMine = false;
+
+function firstNameFromEmail(email) {
+  const local = String(email || "").split("@")[0] || "";
+  return local ? local.charAt(0).toUpperCase() + local.slice(1) : "";
+}
+
+function timeAgo(sqliteTimestamp) {
+  // D1's datetime('now') stores "YYYY-MM-DD HH:MM:SS" in UTC, no timezone
+  // marker — normalize to a real ISO string before parsing.
+  const raw = String(sqliteTimestamp || "");
+  const iso = raw.includes("T") ? raw : raw.replace(" ", "T") + (raw.endsWith("Z") ? "" : "Z");
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return "μόλις τώρα";
+  if (mins < 60) return mins + "λ πριν";
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return hours + "ω πριν";
+  return Math.round(hours / 24) + "η πριν";
+}
 
 async function loadIdeasView() {
   const view = document.getElementById("ideasView");
@@ -1682,30 +1741,54 @@ async function loadIdeasView() {
   }
   view.innerHTML = "<p style='color:#5a6472'>Φόρτωση...</p>";
 
-  const [summaryRes, ideasRes] = await Promise.all([
+  const [summaryRes, ideasRes, activityRes] = await Promise.all([
     fetch("/api/ideas/summary?project_id=" + encodeURIComponent(currentProject)),
     fetch("/api/ideas?project_id=" + encodeURIComponent(currentProject)),
+    fetch("/api/ideas/activity?project_id=" + encodeURIComponent(currentProject) + "&limit=1"),
   ]);
   const summary = await summaryRes.json().catch(function () { return { total: 0, byStatus: {} }; });
   const ideas = await ideasRes.json().catch(function () { return []; });
+  const activity = await activityRes.json().catch(function () { return []; });
   if (!Array.isArray(ideas)) {
     view.innerHTML = "<p style='color:#5a6472'>" + esc((ideas && ideas.error) || "Σφάλμα φόρτωσης.") + "</p>";
     return;
   }
   lastIdeas = ideas;
 
+  const banner =
+    '<div class="ibox-banner"><h2>Καλώς ήρθες' + (currentUser ? ", " + esc(firstNameFromEmail(currentUser)) : "") + '</h2>' +
+    '<p>Ιδέες της ομάδας σου σε αυτό το project — τι κινείται σήμερα.</p></div>';
+
+  const ticker = (Array.isArray(activity) && activity.length)
+    ? '<div class="ibox-ticker"><span class="dot"></span>' + esc(renderTickerText(activity[0])) + '</div>'
+    : "";
+
+  const quickCards = [
+    ["➕", "Νέα ιδέα", "Πρόσθεσε μια νέα πρόταση", "focusIdeaForm()", false],
+    ["💡", "Οι ιδέες μου", "Μόνο οι δικές σου", "setIdeaFilter(true)", ideaFilterMine],
+    ["📋", "Όλες οι ιδέες", "Καθαρισμός φίλτρου", "setIdeaFilter(false)", !ideaFilterMine],
+  ].map(function (c) {
+    return '<button type="button" class="ibox-quick-card' + (c[4] ? " active" : "") + '" onclick="' + c[3] + '">' +
+      '<span class="icon">' + c[0] + '</span><strong>' + esc(c[1]) + '</strong><small>' + esc(c[2]) + '</small></button>';
+  }).join("");
+
   const byStatus = summary.byStatus || {};
+  const total = summary.total || 0;
   const underReview = (byStatus["Υπό Προέλεγχο"] || 0) + (byStatus["Υπό Αξιολόγηση"] || 0);
   const approved = byStatus["Εγκεκριμένη"] || 0;
   const implemented = (byStatus["Σε Υλοποίηση"] || 0) + (byStatus["Ολοκληρωμένη"] || 0);
 
-  const statTiles = [
-    ["💡", summary.total || 0, "Σύνολο ιδεών (project)"],
-    ["🔍", underReview, "Υπό αξιολόγηση"],
-    ["✓", approved, "Εγκεκριμένες"],
-    ["🚀", implemented, "Σε υλοποίηση / ολοκληρωμένες"],
-  ].map(function (t) {
-    return '<div class="stat-card"><div class="stat-num">' + t[1] + '</div><div>' + t[0] + ' ' + t[2] + '</div></div>';
+  const statCards = [
+    ["💡", total, "Σύνολο ιδεών", "var(--v)"],
+    ["🔍", underReview, "Υπό αξιολόγηση", "var(--amber)"],
+    ["✓", approved, "Εγκεκριμένες", "var(--green)"],
+    ["🚀", implemented, "Υλοποιημένες", "var(--cyan)"],
+  ].map(function (s) {
+    const pct = total ? Math.round((s[1] / total) * 100) : 0;
+    return '<div class="ibox-stat-card">' +
+      '<div class="ibox-stat-ring" style="background:conic-gradient(' + s[3] + ' calc(' + pct + '*1%), var(--line) 0)"><span>' + s[1] + '</span></div>' +
+      '<div><div class="ibox-stat-label">' + esc(s[2]) + '</div><div style="font-size:20px;font-weight:700">' + s[0] + '</div></div>' +
+    '</div>';
   }).join("");
 
   const createForm =
@@ -1718,47 +1801,52 @@ async function loadIdeasView() {
     '<div class="row" style="margin-top:10px"><button onclick="addIdea()">Υποβολή ιδέας</button>' +
     '<span id="ideaMsg" style="align-self:center;color:var(--grey)"></span></div>';
 
-  const cards = ideas.length
-    ? ideas.map(renderIdeaCard).join("")
-    : "<p style='color:#5a6472'>Δεν υπάρχουν ακόμα ιδέες σε αυτό το project.</p>";
+  const visibleIdeas = ideaFilterMine ? ideas.filter(function (i) { return i.owner_user_id === currentUserId; }) : ideas;
+  const grid = visibleIdeas.length
+    ? '<div class="ibox-idea-grid">' + visibleIdeas.map(renderIdeaGridCard).join("") + '</div>'
+    : "<p style='color:#5a6472'>Δεν υπάρχουν ιδέες" + (ideaFilterMine ? " δικές σου" : "") + " σε αυτό το project.</p>";
 
   view.innerHTML =
-    '<div class="stat-grid">' + statTiles + '</div>' +
+    banner + ticker +
+    '<div class="ibox-quick-grid">' + quickCards + '</div>' +
+    '<div class="ibox-stats-grid">' + statCards + '</div>' +
     '<div id="createSection">' + createForm + '</div>' +
-    '<h3 style="margin-top:20px">Ιδέες</h3>' + cards;
+    '<h3 style="margin-top:22px">Πρόσφατες ιδέες</h3>' + grid;
 }
 
-function renderIdeaCard(idea) {
-  const statusClass = IDEA_STATUS_CLASS[idea.status] || "blue";
+function renderTickerText(e) {
+  const who = e.actor_name || e.actor_email || "Κάποιος";
+  if (e.type === "created") return who + " υπέβαλε νέα ιδέα: «" + e.idea_title + "»";
+  return who + " μετακίνησε την ιδέα «" + e.idea_title + "» σε «" + e.to_status + "»";
+}
+
+function setIdeaFilter(mine) {
+  ideaFilterMine = mine;
+  loadIdeasView();
+}
+
+function focusIdeaForm() {
+  const el = document.getElementById("ideaTitle");
+  if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.focus(); }
+}
+
+function renderIdeaGridCard(idea) {
   const statusOptions = IDEA_STATUSES_CLIENT.map(function (s) {
     return '<option value="' + esc(s) + '"' + (s === idea.status ? " selected" : "") + '>' + esc(s) + '</option>';
   }).join("");
   return (
-    '<div class="card st-' + statusClass + '" id="idea-' + esc(idea.id) + '">' +
-      '<div style="flex:1;min-width:0">' +
-        '<div class="title">' + esc(idea.title) + '</div>' +
-        '<div class="chips">' +
-          '<span class="chip">👤 <b>' + esc(idea.owner_name || idea.owner_email || "—") + '</b></span>' +
-          '<span class="chip">🏷 ' + esc(idea.category || "—") + '</span>' +
-        '</div>' +
-        (idea.problem ? '<div class="quote">“' + esc(idea.problem) + '”</div>' : "") +
-        '<button class="secondary" style="margin-top:8px;font-size:11px" onclick="toggleIdeaEvents(\'' + esc(idea.id) + '\')">🕐 Ιστορικό ενεργειών</button>' +
-        '<div id="idea-events-' + esc(idea.id) + '" style="display:none;margin-top:8px"></div>' +
-      '</div>' +
-      '<div style="text-align:right;min-width:170px">' +
-        '<span class="pill ' + esc(idea.status) + '">' + esc(idea.status) + '</span>' +
-        '<select style="margin-top:8px;display:block" onchange="changeIdeaStatus(\'' + esc(idea.id) + '\', this.value)">' +
-          statusOptions +
-        '</select>' +
-      '</div>' +
+    '<div class="ibox-idea-card" id="idea-' + esc(idea.id) + '">' +
+      '<div class="tag-row"><span class="cat-tag">' + esc(idea.category || "Γενική") + '</span>' +
+        '<span class="pill ' + esc(idea.status) + '">' + esc(idea.status) + '</span></div>' +
+      '<h4>' + esc(idea.title) + '</h4>' +
+      (idea.problem ? '<p>' + esc(idea.problem) + '</p>' : "") +
+      '<div class="meta-row"><span>👤 ' + esc(idea.owner_name || idea.owner_email || "—") + ' · ' + esc(timeAgo(idea.created_at)) + '</span>' +
+        '<button class="events-toggle" onclick="toggleIdeaEvents(\'' + esc(idea.id) + '\')">🕐 Ιστορικό</button></div>' +
+      '<select style="margin-top:10px;width:100%" onchange="changeIdeaStatus(\'' + esc(idea.id) + '\', this.value)">' + statusOptions + '</select>' +
+      '<div id="idea-events-' + esc(idea.id) + '" style="display:none;margin-top:8px"></div>' +
     '</div>'
   );
 }
-
-const IDEA_STATUSES_CLIENT = [
-  "Υποβλήθηκε", "Υπό Προέλεγχο", "Υπό Αξιολόγηση", "Εγκεκριμένη",
-  "Σε Υλοποίηση", "Ολοκληρωμένη", "Απορριφθείσα", "Σε Αναμονή",
-];
 
 async function addIdea() {
   const title = document.getElementById("ideaTitle").value.trim();
@@ -1780,9 +1868,8 @@ async function addIdea() {
   const data = await res.json().catch(function () { return {}; });
   if (!res.ok) { msg.textContent = data.error || "Σφάλμα υποβολής."; return; }
 
-  if (data.gamification) showGamiToast(data.gamification, "🚀 Νέα ιδέα υποβλήθηκε!");
+  if (data.gamification) applyGamification(data.gamification, "🚀 Νέα ιδέα υποβλήθηκε!");
   await loadIdeasView();
-  await loadGamificationBadge();
 }
 
 async function changeIdeaStatus(id, status) {
@@ -1792,9 +1879,8 @@ async function changeIdeaStatus(id, status) {
     body: JSON.stringify({ status: status }),
   });
   const data = await res.json().catch(function () { return {}; });
-  if (res.ok && data.gamification) showGamiToast(data.gamification, "Κατάσταση ενημερώθηκε → " + status);
+  if (res.ok && data.gamification) applyGamification(data.gamification, "Κατάσταση ενημερώθηκε → " + status);
   await loadIdeasView();
-  await loadGamificationBadge();
 }
 
 async function toggleIdeaEvents(id) {
@@ -1830,28 +1916,38 @@ function showToast(message) {
 
 // ---------- Gamification (server-side, per real user — see relay_gamification) ----------
 
-async function loadGamificationBadge() {
+const LEVEL_TITLES = ["Explorer", "Explorer", "Innovator", "Innovator", "Champion", "Champion", "Legend"];
+function levelTitle(level) {
+  return LEVEL_TITLES[Math.min(level - 1, LEVEL_TITLES.length - 1)] || "Legend";
+}
+
+function renderXpWidget(g) {
   const el = document.getElementById("gamiBadge");
-  if (!currentUser) { el.textContent = ""; return; }
+  if (!el) return;
+  if (!g) { el.innerHTML = ""; return; }
+  const level = g.level || (Math.floor(g.xp / 100) + 1);
+  const xpIntoLevel = g.xp % 100;
+  const badges = (g.badges || []).join(" ");
+  el.innerHTML =
+    '<div class="xp-top"><span>🌱 ' + esc(levelTitle(level)) + ' · Lvl ' + level + '</span><span class="xp-badges">' + badges + '</span></div>' +
+    '<div class="xp-top" style="font-weight:400;color:var(--grey)"><span>' + xpIntoLevel + ' / 100 XP</span></div>' +
+    '<div class="xp-track"><div class="xp-fill" style="width:' + xpIntoLevel + '%"></div></div>';
+}
+
+async function loadGamificationBadge() {
+  if (!currentUser) { renderXpWidget(null); return; }
   try {
     const res = await fetch("/api/gamification/me");
-    if (!res.ok) { el.textContent = ""; return; }
-    const g = await res.json();
-    const badges = (g.badges || []).join(" ");
-    el.textContent = "Lvl " + g.level + " · " + g.xp + " XP " + badges;
+    if (!res.ok) { renderXpWidget(null); return; }
+    renderXpWidget(await res.json());
   } catch {
-    el.textContent = "";
+    renderXpWidget(null);
   }
 }
 
-function showGamiToast(gamification, fallbackMessage) {
-  const el = document.getElementById("gamiBadge");
-  if (el && gamification) {
-    el.textContent = "Lvl " + (Math.floor(gamification.xp / 100) + 1) + " · " + gamification.xp + " XP " + (gamification.badges || []).join(" ");
-  }
-  if (typeof showToast === "function") {
-    showToast(fallbackMessage);
-  }
+function applyGamification(gamification, fallbackMessage) {
+  if (gamification) renderXpWidget(gamification);
+  showToast(fallbackMessage);
 }
 
 document.getElementById("loginForm").addEventListener("submit", requestLoginCode);
