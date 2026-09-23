@@ -355,12 +355,15 @@
 
   <div class="tabs">
     <button data-f="__home__" class="active">🏠 Αρχική</button>
-    <button data-f="">Όλα</button>
-    <button data-f="overdue">Καθυστερημένα</button>
-    <button data-f="accepted">Αποδεκτά</button>
-    <button data-f="done">Ολοκληρωμένα</button>
+    <button data-f="__asks__">▦ Asks</button>
     <button data-f="__dashboard__">📊 Dashboard</button>
     <button data-f="__ideas__">💡 Ιδέες</button>
+  </div>
+  <div class="ibox-subnav" id="askStatusTabs" style="display:none">
+    <button data-sf="" class="active">Όλα</button>
+    <button data-sf="overdue">Καθυστερημένα</button>
+    <button data-sf="accepted">Αποδεκτά</button>
+    <button data-sf="done">Ολοκληρωμένα</button>
   </div>
   <div class="legend" id="tabsLegend">
     ℹ️ Accept = ανάληψη ask · Done = ολοκληρώθηκε · 🔒 = επεξεργασία μόνο από τον δημιουργό του ask/project ή admin
@@ -417,6 +420,7 @@
 
 <script>
 let filter = "__home__";
+let askStatusFilter = "";
 let currentUser = "";
 let currentUserId = "";
 let currentRole = "user";
@@ -1045,12 +1049,15 @@ async function load() {
   const isHome = filter === "__home__";
   const isDashboard = filter === "__dashboard__";
   const isIdeas = filter === "__ideas__";
+  const isAsks = filter === "__asks__";
   syncNavActiveState(filter);
   document.getElementById("homeView").style.display = isHome ? "block" : "none";
   document.getElementById("dashboardView").style.display = isDashboard ? "block" : "none";
   document.getElementById("ideasView").style.display = isIdeas ? "block" : "none";
-  document.getElementById("list").style.display = (isHome || isDashboard || isIdeas) ? "none" : "block";
-  document.getElementById("createSection").style.display = (isHome || isDashboard || isIdeas) ? "none" : "block";
+  document.getElementById("askStatusTabs").style.display = isAsks ? "flex" : "none";
+  document.getElementById("tabsLegend").style.display = (isAsks && askStatusFilter === "") ? "block" : "none";
+  document.getElementById("list").style.display = isAsks ? "block" : "none";
+  document.getElementById("createSection").style.display = isAsks ? "block" : "none";
 
   if (isHome) {
     await loadHomeView();
@@ -1067,6 +1074,8 @@ async function load() {
     return;
   }
 
+  if (!isAsks) return;
+
   if (!currentProject) {
     document.getElementById("list").innerHTML = "<p style='color:#5a6472'>Δημιούργησε πρώτα ένα project.</p>";
     return;
@@ -1074,7 +1083,7 @@ async function load() {
 
   const params = new URLSearchParams();
   params.set("project_id", currentProject);
-  if (filter) params.set("status", filter);
+  if (askStatusFilter) params.set("status", askStatusFilter);
 
   const response = await fetch("/api/asks?" + params.toString());
   const allAsks = await response.json().catch(function() { return []; });
@@ -1659,7 +1668,7 @@ function selectHome() {
 }
 
 function selectAllAsks() {
-  const tab = document.querySelector('.tabs button[data-f=""]');
+  const tab = document.querySelector('.tabs button[data-f="__asks__"]');
   if (tab) tab.click();
   closeDrawer();
 }
@@ -2138,7 +2147,15 @@ document.querySelectorAll(".tabs button").forEach(function(b) {
     document.querySelectorAll(".tabs button").forEach(function(x){ x.classList.remove("active"); });
     b.classList.add("active");
     filter = b.dataset.f;
-    document.getElementById("tabsLegend").style.display = (filter === "") ? "block" : "none";
+    load();
+  };
+});
+
+document.querySelectorAll("#askStatusTabs button").forEach(function(b) {
+  b.onclick = function() {
+    document.querySelectorAll("#askStatusTabs button").forEach(function(x){ x.classList.remove("active"); });
+    b.classList.add("active");
+    askStatusFilter = b.dataset.sf;
     load();
   };
 });
