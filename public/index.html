@@ -130,10 +130,6 @@
     button.secondary{background:var(--surface);color:var(--v);border:1px solid var(--line-strong)}
     button.secondary:hover{border-color:var(--v);background:var(--surface-soft)}
     button.danger-outline{background:var(--surface);color:var(--red);border:1px solid #f4c1bd}
-    .tabs{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;padding:6px;background:var(--surface-soft);border:1px solid var(--line);border-radius:var(--radius);min-width:0;max-width:100%}
-    .tabs button{background:transparent;color:var(--grey);border:0;box-shadow:none}
-    .tabs button:hover{color:var(--v);background:rgba(255,255,255,.7);transform:none;box-shadow:none}
-    .tabs button.active{background:var(--v);color:#fff;border-color:var(--v);box-shadow:var(--shadow-sm)}
     .legend{font-size:11.5px;color:var(--grey);margin-bottom:18px}
     .helptext{font-size:12px;color:var(--grey);margin:-6px 0 12px 2px}
     h3{margin:24px 0 6px;font-size:18px;letter-spacing:-.01em}
@@ -294,13 +290,71 @@
   button:hover,.ibox-quick-card:hover,.ibox-enter-card:hover{transform:none}
   .actions button,.member-list button,.action-menu-content button,.ibox-subnav button{min-height:44px}
   .ibox-idea-card .events-toggle{min-height:44px;padding:0 8px}
+  /* ---- Πλοήγηση C: hero, ενότητες project, tiles, «χρειάζεται προσοχή», κάρτες project ---- */
+  .hero{background:linear-gradient(135deg,#182957 0%,#243b7a 58%,#0b6b86 100%);color:#fff;border-radius:16px;padding:20px;margin-bottom:12px;position:relative}
+  .hero h1{margin:6px 0 4px;font-size:22px;line-height:1.3;outline:none}
+  .hero p{margin:0;color:#d3dcf0;font-size:14px}
+  .hero-back{display:inline-flex;align-items:center;min-height:44px;color:#fff;text-decoration:none;font-weight:600}
+  .hero-back:hover{text-decoration:underline}
+  .hero :focus-visible{outline-color:#fff}
+  .hero-menu{position:absolute;top:12px;right:12px}
+  .hero-menu summary{list-style:none;display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border:1px solid rgba(255,255,255,.4);border-radius:var(--radius-sm);cursor:pointer;font-weight:600;background:rgba(255,255,255,.12);color:#fff}
+  .hero-menu summary::-webkit-details-marker{display:none}
+  .hero-menu-content{position:absolute;right:0;top:50px;z-index:15;display:grid;gap:4px;min-width:230px;padding:8px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);box-shadow:var(--shadow-md)}
+  .hero-menu-content button{width:100%;text-align:left;background:transparent;color:var(--ink);box-shadow:none;border:0}
+  .hero-menu-content button:hover{background:var(--surface-soft);color:var(--ink)}
+  .hero-menu-content :focus-visible{outline-color:var(--v-strong)}
+  .project-nav{display:flex;gap:4px;overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:4px;margin-bottom:16px;box-shadow:var(--shadow-sm);scrollbar-width:none}
+  .project-nav::-webkit-scrollbar{display:none}
+  .project-nav a{flex:0 0 auto;display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border-radius:10px;color:var(--grey);font-weight:650;text-decoration:none;white-space:nowrap}
+  .project-nav a:hover{background:var(--surface-soft)}
+  .project-nav a[aria-current="page"]{background:var(--v);color:#fff}
+  .view-title{font-size:22px;margin:0 0 14px;outline:none}
+  .section-title{font-size:18px;margin:0 0 10px}
+  .tile-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:16px}
+  .tile{min-width:0;display:flex;align-items:center;gap:12px;text-align:left;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-top:4px solid var(--line-strong);border-radius:var(--radius);padding:12px 14px;min-height:72px;box-shadow:var(--shadow-sm)}
+  button.tile{cursor:pointer}
+  button.tile:hover{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-md)}
+  .tile .n{font-size:28px;font-weight:800;line-height:1}
+  .tile .l{font-size:13px;color:var(--grey);line-height:1.3;min-width:0;overflow-wrap:anywhere}
+  .tile.t-late{border-top-color:var(--red)}.tile.t-late .n{color:var(--red)}
+  .tile.t-mine{border-top-color:var(--v)}.tile.t-mine .n{color:var(--v)}
+  .tile-ring{width:48px;height:48px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center}
+  .tile-ring span{width:36px;height:36px;border-radius:50%;background:var(--surface);display:grid;place-items:center;font-size:12px;font-weight:800}
+  .overview-cols{display:flex;flex-direction:column;gap:20px}
+  .overview-cols aside{order:-1}
+  .attn-list{display:grid;gap:8px;margin:0 0 8px;padding:0;list-style:none}
+  .attn-row{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 14px;width:100%;text-align:left;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-left:5px solid var(--v);border-radius:12px;box-shadow:var(--shadow-sm)}
+  button.attn-row{cursor:pointer}
+  button.attn-row:hover{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-md)}
+  .attn-row .t{flex:1;font-weight:650}
+  .attn-row .c{min-width:32px;height:32px;padding:0 8px;border-radius:999px;display:grid;place-items:center;font-weight:800;font-size:14px;background:var(--surface-soft)}
+  .attn-late{border-left-color:var(--red)}.attn-late .c{background:var(--redbg);color:var(--red)}
+  .attn-none{border-left-color:var(--amber)}.attn-none .c{background:var(--amberbg);color:var(--amber)}
+  .project-card-grid{display:grid;gap:12px;margin-bottom:8px}
+  .pcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm);overflow:hidden}
+  .pcard-strip{height:6px;background:linear-gradient(135deg,#182957,#243b7a 58%,#0b6b86)}
+  .pcard-body{padding:16px;display:grid;gap:12px}
+  .pcard-head{display:flex;align-items:center;gap:12px}
+  .pcard h3{margin:0;font-size:17px}
+  .pmark{width:44px;height:44px;border-radius:12px;background:var(--v-strong);color:#fff;display:grid;place-items:center;font-weight:800;flex:0 0 auto}
+  .pills{display:flex;gap:8px;flex-wrap:wrap}
+  .pill.late{background:var(--redbg);color:var(--red)}
+  a.btn-link{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 18px;border-radius:var(--radius-sm);background:var(--v);color:#fff;font-weight:650;text-decoration:none;justify-self:start}
+  a.btn-link:hover{background:var(--v-strong)}
+  .toolbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  /* Κινητό: η κεφαλίδα δεν χωράει XP + email + αποσύνδεση (ξεπερνούσε το πλάτος οθόνης). Email/αποσύνδεση: Προφίλ και μενού. */
+  @media (max-width:1100px){header span.tagline,#whoami{display:none}}
+  @media (max-width:720px){#gamiBadge,#whoami,#logoutButton{display:none !important}}
+  @media (min-width:640px){.tile-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.project-card-grid{grid-template-columns:repeat(2,1fr)}}
+  @media (min-width:1024px){.overview-cols{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px;align-items:start}.overview-cols aside{order:0}}
   @media (prefers-reduced-motion:reduce){
     html{scroll-behavior:auto}
     *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
   }
   @media (max-width:900px){.chart-grid{grid-template-columns:minmax(0,1fr);width:100%}.chart-card{width:100%}}
   @media (max-width:900px){header{padding-left:84px}#app.app-shell{padding-left:28px}.app-sidebar{transform:translateX(-102%);transition:transform .24s ease}.app-sidebar.is-open{transform:translateX(0)}.drawer-backdrop.is-open{display:block;position:fixed;inset:0;background:rgba(21,33,59,.42);z-index:25}.mobile-menu{display:inline-grid;place-items:center;width:44px;padding:0;background:transparent;box-shadow:none;color:var(--v);font-size:20px}.mobile-menu:hover{background:var(--surface-soft);transform:none;box-shadow:none}.mobile-bottom-nav{position:fixed;left:12px;right:12px;bottom:12px;z-index:22;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;padding:6px;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-md)}.mobile-bottom-nav button{background:transparent;color:var(--grey);box-shadow:none;font-size:11px}.mobile-bottom-nav button:hover{color:var(--v);background:var(--surface-soft);transform:none;box-shadow:none}.mobile-bottom-nav button.active{color:var(--v);background:var(--surface-soft);font-weight:700}.mobile-bottom-nav-primary{color:var(--v) !important;font-weight:700}}
-  @media (max-width:720px){header{height:64px;padding:0 14px;gap:8px}header b{font-size:19px}header span.tagline{display:none}#app.app-shell{padding:18px 14px 112px}.workspace-content{width:100%}.row{gap:8px}.tabs{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}.tabs button{flex:0 0 auto}.card{flex-direction:column;padding:16px}.card>div:last-child{width:100%;text-align:left!important;min-width:0!important}.actions{justify-content:flex-start}.edit-grid{grid-template-columns:1fr}.stat-grid{grid-template-columns:repeat(2,1fr)}.chart-grid{grid-template-columns:1fr}.dash-toolbar{display:grid;grid-template-columns:1fr 1fr}.dash-toolbar button{width:100%;font-size:12px}.insight-grid{grid-template-columns:1fr}table.report{display:block;overflow-x:auto;white-space:nowrap}.auth-view{margin:8vh 14px 0;padding:22px}.auth-view form{flex-direction:column}.auth-view form button{width:100%}#whoami{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.toast{left:14px;right:14px;bottom:86px}}
+  @media (max-width:720px){header{height:64px;padding:0 14px;gap:8px}header b{font-size:19px}header span.tagline{display:none}#app.app-shell{padding:18px 14px 112px}.workspace-content{width:100%}.row{gap:8px}.card{flex-direction:column;padding:16px}.card>div:last-child{width:100%;text-align:left!important;min-width:0!important}.actions{justify-content:flex-start}.edit-grid{grid-template-columns:1fr}.stat-grid{grid-template-columns:repeat(2,1fr)}.chart-grid{grid-template-columns:1fr}.dash-toolbar{display:grid;grid-template-columns:1fr 1fr}.dash-toolbar button{width:100%;font-size:12px}.insight-grid{grid-template-columns:1fr}table.report{display:block;overflow-x:auto;white-space:nowrap}.auth-view{margin:8vh 14px 0;padding:22px}.auth-view form{flex-direction:column}.auth-view form button{width:100%}#whoami{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.toast{left:14px;right:14px;bottom:86px}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -317,26 +371,19 @@
 </header>
 <aside id="appSidebar" class="app-sidebar" aria-label="Workspace navigation">
   <div class="brand-lockup"><div class="brand-mark">R</div><div><strong>Relay</strong><img class="brand-kafkas" src="/brand/kafkas-logo-white.png" alt="ΚΑΥΚΑΣ" width="97" height="13" /></div></div>
-  <div class="sidebar-label">Workspace</div>
-  <nav class="sidebar-nav" aria-label="Workspace">
-    <button type="button" id="sidebarHomeButton" onclick="selectHome()"><span class="nav-icon">🏠</span>Αρχική</button>
-    <button type="button" id="sidebarAllAsksButton" onclick="selectAllAsks()"><span class="nav-icon">▦</span>Όλες οι ενέργειες</button>
-    <button type="button" id="sidebarDashboardButton" onclick="selectDashboard()"><span class="nav-icon">◫</span>Dashboard</button>
-    <button type="button" onclick="openAIInsights()"><span class="nav-icon">🤖</span>AI Insights</button>
-    <button type="button" id="sidebarIdeasButton" onclick="selectIdeas()"><span class="nav-icon">💡</span>Ιδέες ομάδας</button>
-  </nav>
-  <div class="sidebar-label">Project</div>
-  <label class="sidebar-project-label" for="projectSelect">Τρέχον project</label>
-  <select id="projectSelect" class="sidebar-project" aria-label="Τρέχον project"></select>
+  <div class="sidebar-label">Projects</div>
+  <nav class="sidebar-nav" id="sidebarProjects" aria-label="Projects"></nav>
   <div class="sidebar-nav" style="margin-top:8px">
     <button type="button" onclick="createProject()"><span class="nav-icon">＋</span>Νέο project</button>
-    <button type="button" onclick="openMembers()"><span class="nav-icon">👥</span>Ομάδα project</button>
-    <button type="button" class="delete-project-action" onclick="deleteCurrentProject()"><span class="nav-icon">⌫</span>Διαγραφή project</button>
   </div>
+  <!-- Παραμένει κρυφό: το διαβάζουν τα exports Excel/PPT για το όνομα του project. -->
+  <select id="projectSelect" hidden aria-hidden="true" tabindex="-1"></select>
   <div class="sidebar-spacer"></div>
-  <div class="sidebar-nav">
+  <nav class="sidebar-nav" id="sidebarAccount" aria-label="Λογαριασμός">
+    <button type="button" id="sidebarCaptureButton" onclick="focusCapture()"><span class="nav-icon">＋</span>Καταγραφή από κείμενο</button>
+    <button type="button" id="sidebarProfileButton" onclick="navigate('#/profile')"><span class="nav-icon">◉</span>Προφίλ</button>
     <button type="button" onclick="logout()"><span class="nav-icon">⏻</span>Αποσύνδεση</button>
-  </div>
+  </nav>
   <div class="sidebar-profile"><div class="profile-avatar">◉</div><div><strong>Workspace member</strong><small>Signed in</small></div></div>
 </aside>
 <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
@@ -357,20 +404,25 @@
 </main>
 <main id="app" class="app-shell" hidden>
  <div class="workspace-content">
-  <div class="row">
-    <label style="font-size:13px;color:var(--grey)">Project:</label>
-    <button class="secondary" onclick="createProject()">+ Νέο project</button>
-    <button class="secondary" onclick="openMembers()">👥 Ομάδα project</button>
-    <button class="secondary project-manage-action" onclick="openImport()">📥 Import Master Task List</button>
-    <button class="danger-outline delete-project-action" onclick="deleteCurrentProject()">🗑 Διαγραφή project</button>
+  <div id="projectChrome" hidden>
+    <section class="hero" aria-labelledby="heroTitle">
+      <a class="hero-back" href="#/projects">‹ Projects</a>
+      <h1 id="heroTitle" tabindex="-1"></h1>
+      <p id="heroSub"></p>
+      <details class="hero-menu">
+        <summary>⋯ Ρυθμίσεις project</summary>
+        <div class="hero-menu-content">
+          <button type="button" onclick="openMembers()">👥 Ομάδα project</button>
+          <button type="button" class="project-manage-action" onclick="openImport()">📥 Import Master Task List</button>
+          <button type="button" class="delete-project-action" onclick="deleteCurrentProject()">🗑 Διαγραφή project</button>
+        </div>
+      </details>
+    </section>
+    <nav class="project-nav" id="projectNav" aria-label="Ενότητες project"></nav>
   </div>
-
-  <div class="tabs">
-    <button data-f="__home__" class="active">🏠 Αρχική</button>
-    <button data-f="__asks__">▦ Ενέργειες</button>
-    <button data-f="__dashboard__">📊 Dashboard</button>
-    <button data-f="__ideas__">💡 Ιδέες</button>
-  </div>
+  <div id="projectsView" style="display:none"></div>
+  <div id="profileView" style="display:none"></div>
+  <div id="teamView" style="display:none"></div>
   <div class="ibox-subnav" id="askStatusTabs" style="display:none">
     <button data-sf="" class="active">Όλα</button>
     <button data-sf="overdue">Εκπρόθεσμες</button>
@@ -426,9 +478,9 @@
  </div>
 </main>
 <nav class="mobile-bottom-nav" aria-label="Πλοήγηση">
-  <button type="button" id="navAsksButton" onclick="selectAllAsks()"><span aria-hidden="true">▦</span><br>Ενέργειες</button>
+  <button type="button" id="navProjectsButton" onclick="navigate('#/projects')"><span aria-hidden="true">▦</span><br>Projects</button>
   <button type="button" id="navCaptureButton" class="mobile-bottom-nav-primary" onclick="focusCapture()"><span aria-hidden="true">＋</span><br>Καταγραφή</button>
-  <button type="button" id="navDashboardButton" onclick="selectDashboard()"><span aria-hidden="true">◫</span><br>Dashboard</button>
+  <button type="button" id="navProfileButton" onclick="navigate('#/profile')"><span aria-hidden="true">◉</span><br>Προφίλ</button>
 </nav>
 <div id="modalShell" class="modal-shell" hidden role="dialog" aria-modal="true"></div>
 <div id="toast" class="toast" hidden role="status"></div>
@@ -533,7 +585,7 @@ function showApp(session) {
   document.getElementById("app").hidden = false;
   renderWhoAmI();
   loadGamificationBadge();
-  loadProjects().then(load);
+  loadProjects().then(startRouting);
 }
 
 async function checkSession() {
@@ -765,7 +817,7 @@ async function createProject() {
   currentProject = result.id;
   localStorage.setItem("relay_project", currentProject);
   await loadProjects();
-  await load();
+  navigate(projectHash(currentProject));
 }
 
 async function deleteCurrentProject() {
@@ -792,7 +844,7 @@ async function deleteCurrentProject() {
   currentProject = "";
   localStorage.removeItem("relay_project");
   await loadProjects();
-  await load();
+  navigate("#/projects");
 }
 
 // ---------- Dashboard ----------
@@ -1123,7 +1175,15 @@ async function load() {
   const isDashboard = filter === "__dashboard__";
   const isIdeas = filter === "__ideas__";
   const isAsks = filter === "__asks__";
-  syncNavActiveState(filter);
+  const isTeam = filter === "__team__";
+  const isProjects = filter === "__projects__";
+  const isProfile = filter === "__profile__";
+  syncNav();
+  document.getElementById("projectChrome").hidden = isProjects || isProfile;
+  document.getElementById("projectsView").style.display = isProjects ? "block" : "none";
+  document.getElementById("profileView").style.display = isProfile ? "block" : "none";
+  document.getElementById("teamView").style.display = isTeam ? "block" : "none";
+  document.getElementById("viewBar").style.display = isAsks ? "flex" : "none";
   document.getElementById("homeView").style.display = isHome ? "block" : "none";
   document.getElementById("dashboardView").style.display = isDashboard ? "block" : "none";
   document.getElementById("ideasView").style.display = isIdeas ? "block" : "none";
@@ -1131,6 +1191,21 @@ async function load() {
   document.getElementById("tabsLegend").style.display = (isAsks && askStatusFilter === "") ? "block" : "none";
   document.getElementById("list").style.display = isAsks ? "block" : "none";
   document.getElementById("createSection").style.display = isAsks ? "block" : "none";
+
+  if (isProjects) {
+    await loadProjectsView();
+    return;
+  }
+
+  if (isProfile) {
+    renderProfileView();
+    return;
+  }
+
+  if (isTeam) {
+    await loadTeamView();
+    return;
+  }
 
   if (isHome) {
     await loadHomeView();
@@ -1745,28 +1820,149 @@ function renderImportSummary(s) {
     list("Unresolved dependencies (κρατήθηκαν ως κείμενο)", s.unresolvedDependencies, function(d) { return d.task + " → " + d.reference; });
 }
 
-function selectHome() {
-  const tab = document.querySelector('.tabs button[data-f="__home__"]');
-  if (tab) tab.click();
-  closeDrawer();
+// ---------- Πλοήγηση (hash routes) ----------
+// #/projects · #/profile · #/p/<id>[/overview|asks|team|ideas|dashboard]
+// Το κάθε route κρατά και το deep link (refresh / πίσω / αντιγραφή συνδέσμου).
+const PROJECT_TABS = [
+  ["overview", "Επισκόπηση", "__home__"],
+  ["asks", "Ενέργειες", "__asks__"],
+  ["team", "Ομάδα", "__team__"],
+  ["ideas", "Ιδέες", "__ideas__"],
+  ["dashboard", "Dashboard", "__dashboard__"],
+];
+let routeState = { view: "projects", project: "", tab: "" };
+let routeFocusPending = false;
+let captureFocusPending = false;
+let routeSeq = 0;
+
+function projectHash(id, tab) {
+  return "#/p/" + encodeURIComponent(id) + (tab && tab !== "overview" ? "/" + tab : "");
 }
 
-function selectAllAsks() {
-  const tab = document.querySelector('.tabs button[data-f="__asks__"]');
-  if (tab) tab.click();
-  closeDrawer();
+function parseRoute() {
+  const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(function(part) {
+    try { return decodeURIComponent(part); } catch (error) { return part; }
+  });
+  if (parts[0] === "p" && parts[1]) {
+    const known = PROJECT_TABS.some(function(t) { return t[0] === parts[2]; });
+    return { view: "project", project: parts[1], tab: known ? parts[2] : "overview" };
+  }
+  if (parts[0] === "profile") return { view: "profile", project: "", tab: "" };
+  if (parts[0] === "projects") return { view: "projects", project: "", tab: "" };
+  return null;
 }
 
-function selectDashboard() {
-  const tab = document.querySelector('.tabs button[data-f="__dashboard__"]');
-  if (tab) tab.click();
-  closeDrawer();
+// Ένα μόνο project: ανοίγει κατευθείαν. Αλλιώς ξεκινάμε από τη λίστα των projects.
+function defaultRoute() {
+  const ids = Object.keys(projectsById);
+  return ids.length === 1 ? projectHash(ids[0]) : "#/projects";
 }
 
-function selectIdeas() {
-  const tab = document.querySelector('.tabs button[data-f="__ideas__"]');
-  if (tab) tab.click();
+function navigate(hash) {
   closeDrawer();
+  routeFocusPending = true;
+  if (location.hash === hash) { applyRoute(); return; }
+  location.hash = hash; // το hashchange καλεί το applyRoute
+}
+
+function startRouting() {
+  if (!parseRoute()) history.replaceState(null, "", defaultRoute());
+  applyRoute();
+}
+
+function setDocumentTitle(route) {
+  const base = "Relay";
+  if (route.view === "project") {
+    const project = projectsById[route.project];
+    const tab = PROJECT_TABS.find(function(t) { return t[0] === route.tab; });
+    document.title = base + " | " + (project ? project.name : "Project") + " · " + (tab ? tab[1] : "");
+  } else {
+    document.title = base + " | " + (route.view === "profile" ? "Προφίλ" : "Projects");
+  }
+}
+
+function renderProjectChrome(route) {
+  const project = projectsById[route.project];
+  document.getElementById("heroTitle").textContent = project ? project.name : "";
+  document.getElementById("heroSub").textContent = project && canManage(project)
+    ? "Διαχειρίζεσαι αυτό το project"
+    : "Είσαι μέλος αυτού του project";
+  document.getElementById("projectNav").innerHTML = PROJECT_TABS.map(function(t) {
+    return '<a href="' + esc(projectHash(route.project, t[0])) + '"' + (t[0] === route.tab ? ' aria-current="page"' : "") + '>' + esc(t[1]) + '</a>';
+  }).join("");
+}
+
+async function applyRoute() {
+  let route = parseRoute();
+  if (!route) {
+    history.replaceState(null, "", defaultRoute());
+    route = parseRoute();
+  }
+  if (route.view === "project" && !projectsById[route.project]) {
+    history.replaceState(null, "", "#/projects");
+    route = parseRoute();
+    showToast("Το project δεν βρέθηκε ή δεν έχεις πρόσβαση.");
+  }
+  const seq = ++routeSeq;
+  const previous = routeState;
+  routeState = route;
+  closeDrawer();
+  // Αλλαγή οθόνης/project: καθάρισε το παλιό περιεχόμενο ώστε να μη φανεί για λίγο ξένο project.
+  if (previous.view !== route.view || previous.project !== route.project || previous.tab !== route.tab) {
+    ["list", "homeView", "teamView", "dashboardView", "ideasView", "projectsView", "profileView"].forEach(function(id) {
+      document.getElementById(id).innerHTML = "";
+    });
+  }
+
+  if (route.view === "project") {
+    const projectChanged = currentProject !== route.project;
+    if (projectChanged) {
+      currentProject = route.project;
+      localStorage.setItem("relay_project", currentProject);
+      const select = document.getElementById("projectSelect");
+      if (select) select.value = currentProject;
+    }
+    // Πρώτα η κεφαλίδα του νέου project, μετά τα δεδομένα: να μη φαίνεται στιγμιαία το προηγούμενο.
+    updateProjectActions();
+    filter = PROJECT_TABS.find(function(t) { return t[0] === route.tab; })[2];
+    renderProjectChrome(route);
+    if (projectChanged) {
+      await loadProjectAssignees();
+      if (seq !== routeSeq) return;
+    }
+  } else {
+    filter = route.view === "profile" ? "__profile__" : "__projects__";
+  }
+  setDocumentTitle(route);
+  await load();
+  if (seq !== routeSeq) return;
+
+  if (routeFocusPending) {
+    routeFocusPending = false;
+    window.scrollTo(0, 0);
+    if (captureFocusPending && route.tab === "asks") {
+      captureFocusPending = false;
+      const capture = document.getElementById("paste");
+      if (capture) {
+        capture.scrollIntoView({ block: "center" });
+        capture.focus();
+        return;
+      }
+    }
+    const headingId = route.view === "project" ? "heroTitle" : route.view === "profile" ? "profileTitle" : "projectsTitle";
+    const heading = document.getElementById(headingId);
+    if (heading) heading.focus({ preventScroll: true });
+  }
+  captureFocusPending = false;
+}
+
+// Πλοήγηση στις ενέργειες του τρέχοντος project, προαιρετικά με φίλτρο status.
+function goAsks(statusFilter) {
+  askStatusFilter = statusFilter || "";
+  document.querySelectorAll("#askStatusTabs button").forEach(function(b) {
+    b.classList.toggle("active", b.dataset.sf === askStatusFilter);
+  });
+  navigate(projectHash(currentProject, "asks"));
 }
 
 function openDrawer() {
@@ -1791,40 +1987,46 @@ function closeDrawer() {
 }
 
 function focusCapture() {
-  selectAllAsks();
-  const capture = document.getElementById("paste");
-  if (capture) {
-    capture.scrollIntoView({ behavior: "smooth", block: "center" });
-    capture.focus();
-  }
+  const id = currentProject && projectsById[currentProject] ? currentProject : Object.keys(projectsById)[0];
+  if (!id) { showToast("Δημιούργησε πρώτα ένα project."); return; }
+  captureFocusPending = true;
+  navigate(projectHash(id, "asks"));
 }
 
-function openAIInsights() {
-  selectDashboard();
-  setTimeout(function() {
-    const box = document.getElementById("aiInsightsBox");
-    if (box) box.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, 50);
+function renderSidebarProjects() {
+  const nav = document.getElementById("sidebarProjects");
+  if (!nav) return;
+  const onProject = routeState.view === "project";
+  let html = '<button type="button" data-nav="#/projects"' + (routeState.view === "projects" ? ' class="active" aria-current="page"' : "") + '><span class="nav-icon">▦</span>Όλα τα projects</button>';
+  Object.keys(projectsById).forEach(function(id) {
+    const active = onProject && routeState.project === id;
+    html += '<button type="button" data-nav="' + esc(projectHash(id)) + '"' + (active ? ' class="active" aria-current="page"' : "") + '>' +
+      '<span class="nav-icon">' + esc(projectInitials(projectsById[id].name)) + '</span>' + esc(projectsById[id].name) + '</button>';
+  });
+  nav.innerHTML = html;
 }
 
-function syncNavActiveState(currentFilter) {
-  const isHome = currentFilter === "__home__";
-  const isDashboard = currentFilter === "__dashboard__";
-  const isIdeas = currentFilter === "__ideas__";
-  const asksActive = !isHome && !isDashboard && !isIdeas;
+function projectInitials(name) {
+  const words = String(name || "?").trim().split(/\s+/).filter(Boolean);
+  const chars = words.length > 1 ? words[0][0] + words[1][0] : String(name || "?").slice(0, 2);
+  return chars.toUpperCase();
+}
+
+function syncNav() {
+  renderSidebarProjects();
+  const onProfile = routeState.view === "profile";
   const toggle = function(id, active) {
     const el = document.getElementById(id);
-    if (el) el.classList.toggle("active", active);
+    if (!el) return;
+    el.classList.toggle("active", active);
+    if (active) el.setAttribute("aria-current", "page"); else el.removeAttribute("aria-current");
   };
-  toggle("sidebarHomeButton", isHome);
-  toggle("sidebarAllAsksButton", asksActive);
-  toggle("sidebarDashboardButton", isDashboard);
-  toggle("sidebarIdeasButton", isIdeas);
-  toggle("navAsksButton", asksActive);
-  toggle("navDashboardButton", isDashboard);
+  toggle("sidebarProfileButton", onProfile);
+  toggle("navProjectsButton", !onProfile);
+  toggle("navProfileButton", onProfile);
 }
 
-// ---------- Home (project overview: asks + ideas + team, at a glance) ----------
+// ---------- Views: Projects, Επισκόπηση, Ομάδα, Προφίλ ----------
 
 function initialsFromEmail(email) {
   const local = String(email || "").split("@")[0] || "?";
@@ -1833,60 +2035,154 @@ function initialsFromEmail(email) {
   return chars.toUpperCase();
 }
 
+function errorBox(message) {
+  return '<div class="empty-state" role="alert">' + esc(message) +
+    '<br><button type="button" class="secondary" style="margin-top:12px" onclick="load()">Ξαναδοκίμασε</button></div>';
+}
+
+function projectsViewHtml(asksByProject) {
+  const ids = Object.keys(projectsById);
+  const me = String(currentUser || "").toLowerCase();
+  const head = '<div class="toolbar"><h1 class="view-title" id="projectsTitle" tabindex="-1" style="margin:0">Projects</h1>' +
+    '<button type="button" onclick="createProject()">＋ Νέο project</button></div>';
+  if (!ids.length) {
+    return head + '<div class="empty-state">Δεν υπάρχει ακόμα κανένα project.<br>' +
+      '<button type="button" style="margin-top:12px" onclick="createProject()">Δημιούργησε το πρώτο σου project</button></div>';
+  }
+  return head + '<div class="project-card-grid">' + ids.map(function(id) {
+    const project = projectsById[id];
+    const stats = asksByProject ? asksByProject[id] || [] : null;
+    let pills = "";
+    if (stats) {
+      const open = stats.filter(function(a) { return a.status !== "done"; });
+      const late = stats.filter(function(a) { return a.is_overdue; }).length;
+      const mine = open.filter(function(a) { return String(a.owner || "").trim().toLowerCase() === me; }).length;
+      if (mine) pills += '<span class="pill open">' + mine + ' δικές μου</span>';
+      if (late) pills += '<span class="pill late">! ' + late + (late === 1 ? ' εκπρόθεσμη' : ' εκπρόθεσμες') + '</span>';
+      if (open.length) pills += '<span class="pill accepted">' + open.length + (open.length === 1 ? ' ανοιχτή' : ' ανοιχτές') + '</span>';
+      if (!pills) pills = '<span class="pill done">✓ Τίποτα ανοιχτό</span>';
+    }
+    return '<div class="pcard"><div class="pcard-strip"></div><div class="pcard-body">' +
+      '<div class="pcard-head"><span class="pmark" aria-hidden="true">' + esc(projectInitials(project.name)) + '</span><h2 style="margin:0;font-size:17px">' + esc(project.name) + '</h2></div>' +
+      (pills ? '<div class="pills">' + pills + '</div>' : "") +
+      '<a class="btn-link" href="' + esc(projectHash(id)) + '">Άνοιγμα</a></div></div>';
+  }).join("") + '</div>';
+}
+
+async function loadProjectsView() {
+  const view = document.getElementById("projectsView");
+  view.innerHTML = projectsViewHtml(null);
+  let byProject = null;
+  try {
+    const response = await fetch("/api/asks");
+    const data = await response.json();
+    if (response.ok && Array.isArray(data)) {
+      byProject = {};
+      data.forEach(function(ask) { (byProject[ask.project_id] = byProject[ask.project_id] || []).push(ask); });
+    }
+  } catch (error) { /* χωρίς αριθμούς: οι κάρτες δουλεύουν κανονικά */ }
+  if (filter !== "__projects__") return;
+  view.innerHTML = projectsViewHtml(byProject);
+}
+
+function renderProfileView() {
+  const view = document.getElementById("profileView");
+  view.innerHTML = '<h1 class="view-title" id="profileTitle" tabindex="-1">Προφίλ</h1>' +
+    '<div class="shell-card" style="padding:20px;max-width:520px">' +
+    '<p style="margin:0 0 4px;color:var(--grey);font-size:13px">Email</p><p style="margin:0 0 14px;font-weight:650;overflow-wrap:anywhere">' + esc(currentUser) + '</p>' +
+    '<p style="margin:0 0 4px;color:var(--grey);font-size:13px">Ρόλος</p><p style="margin:0 0 18px;font-weight:650">' + (currentRole === "admin" ? "Διαχειριστής" : "Χρήστης") + '</p>' +
+    '<button type="button" class="secondary" onclick="logout()">Αποσύνδεση</button></div>';
+}
+
+function dueSortValue(ask) { return ask.due_date || "9999-12-31"; }
+
 async function loadHomeView() {
   const view = document.getElementById("homeView");
-  if (!currentProject) {
-    view.innerHTML = "<p style='color:#5a6472'>Δημιούργησε πρώτα ένα project.</p>";
-    return;
-  }
+  if (!currentProject) { view.innerHTML = errorBox("Δεν υπάρχει επιλεγμένο project."); return; }
   view.innerHTML = "<p style='color:#5a6472'>Φόρτωση...</p>";
 
-  const [dashRes, ideasSummaryRes, membersRes] = await Promise.all([
-    fetch("/api/dashboard?project_id=" + encodeURIComponent(currentProject)),
-    fetch("/api/ideas/summary?project_id=" + encodeURIComponent(currentProject)),
-    fetch("/api/projects/" + encodeURIComponent(currentProject) + "/members"),
-  ]);
-  const dash = await dashRes.json().catch(function () { return { totals: {} }; });
-  const ideasSummary = await ideasSummaryRes.json().catch(function () { return { total: 0, byStatus: {} }; });
-  const membersData = await membersRes.json().catch(function () { return { members: [] }; });
+  let asks;
+  try {
+    const response = await fetch("/api/asks?project_id=" + encodeURIComponent(currentProject));
+    asks = await response.json();
+    if (!response.ok || !Array.isArray(asks)) throw new Error((asks && asks.error) || "Σφάλμα φόρτωσης.");
+  } catch (error) {
+    view.innerHTML = errorBox(error.message || "Σφάλμα φόρτωσης.");
+    return;
+  }
+  if (filter !== "__home__") return;
+  asksById = {};
+  asks.forEach(function(ask) { asksById[ask.id] = ask; });
 
-  const totals = dash.totals || {};
-  const byStatus = ideasSummary.byStatus || {};
-  const underReview = (byStatus["Υπό Προέλεγχο"] || 0) + (byStatus["Υπό Αξιολόγηση"] || 0);
+  const me = String(currentUser || "").toLowerCase();
+  const open = asks.filter(function(a) { return a.status !== "done"; });
+  const mine = open.filter(function(a) { return String(a.owner || "").trim().toLowerCase() === me; })
+    .sort(function(a, b) { return dueSortValue(a).localeCompare(dueSortValue(b)); });
+  const late = asks.filter(function(a) { return a.is_overdue; }).length;
+  const unassigned = open.filter(function(a) { return !String(a.owner || "").trim(); }).length;
+  const done = asks.length - open.length;
+  const pct = asks.length ? Math.round(done / asks.length * 100) : 0;
 
-  const banner =
-    '<div class="ibox-banner"><h2>' + esc(currentProjectName() || "Project") + '</h2>' +
-    '<p>Καλώς ήρθες' + (currentUser ? ", " + esc(firstNameFromEmail(currentUser)) : "") + ' — μια ματιά σε όλο το project πριν μπεις πιο μέσα.</p></div>';
+  const tiles =
+    '<button type="button" class="tile t-late" onclick="goAsks(\'overdue\')"><span class="n">' + late + '</span><span class="l">Εκπρόθεσμες</span></button>' +
+    '<button type="button" class="tile t-mine" onclick="document.getElementById(\'overviewMine\').scrollIntoView({behavior:\'smooth\'})"><span class="n">' + mine.length + '</span><span class="l">Δικές μου ανοιχτές</span></button>' +
+    '<button type="button" class="tile" onclick="goAsks(\'\')"><span class="n">' + open.length + '</span><span class="l">Ανοιχτές συνολικά</span></button>' +
+    '<div class="tile"><span class="tile-ring" style="background:conic-gradient(var(--green) ' + pct + '%,var(--line) 0)"><span>' + pct + '%</span></span>' +
+      '<span class="l">Ολοκληρώθηκαν ' + done + ' από ' + asks.length + '</span></div>';
 
-  const enterCards = [
-    ["📋", "Ενέργειες", (totals.total || 0) + " ενέργειες", (totals.overdue || 0) + " εκπρόθεσμες", "selectAllAsks()"],
-    ["💡", "Ιδέες ομάδας", (ideasSummary.total || 0) + " ιδέες", underReview + " υπό αξιολόγηση", "selectIdeas()"],
-    ["📊", "Dashboard", "Αναλυτικά", "Charts & στατιστικά ανά owner", "selectDashboard()"],
-  ].map(function (c) {
-    return '<button type="button" class="ibox-enter-card" onclick="' + c[4] + '"><span class="icon">' + c[0] + '</span>' +
-      '<strong>' + esc(c[1]) + '</strong><span class="stat">' + esc(c[2]) + '</span><small>' + esc(c[3]) + '</small>' +
-      '<span class="go">Δες ανάλυση →</span></button>';
-  }).join("");
+  const rows = [];
+  if (late) rows.push('<li><button type="button" class="attn-row attn-late" onclick="goAsks(\'overdue\')"><span class="t">Εκπρόθεσμες ενέργειες</span><span class="c">' + late + '</span><span aria-hidden="true">›</span></button></li>');
+  if (unassigned) rows.push('<li><div class="attn-row attn-none"><span class="t">Ενέργειες χωρίς υπεύθυνο</span><span class="c">' + unassigned + '</span></div></li>');
+  const attention = rows.length
+    ? '<ul class="attn-list">' + rows.join("") + '</ul>'
+    : '<div class="empty-state">Τίποτα εκκρεμές ✓</div>';
 
-  const members = membersData.members || [];
-  const ownerCard = membersData.owner_email
-    ? '<div class="ibox-member-card"><div class="ibox-member-avatar">' + esc(initialsFromEmail(membersData.owner_email)) + '</div>' +
-      '<div><div class="email">' + esc(membersData.owner_email) + '</div><span class="status-pill accepted">Owner</span></div></div>'
-    : "";
-  const memberCards = members.map(function (m) {
-    const statusClass = m.invite_status === "accepted" ? "accepted" : "pending";
-    const statusLabel = m.invite_status === "accepted" ? "Ενεργό μέλος" : "Εκκρεμεί πρόσκληση";
-    return '<div class="ibox-member-card"><div class="ibox-member-avatar">' + esc(initialsFromEmail(m.email)) + '</div>' +
-      '<div><div class="email">' + esc(m.email) + '</div><span class="status-pill ' + statusClass + '">' + statusLabel + '</span></div></div>';
-  }).join("");
-  const teamGrid = (ownerCard || memberCards)
-    ? '<div class="ibox-member-grid">' + ownerCard + memberCards + '</div>'
-    : "<p style='color:#5a6472'>Ακόμα μόνο εσύ σε αυτό το project. Πρόσκλησε συναδέλφους από «Ομάδα project».</p>";
+  const mineHtml = mine.length
+    ? mine.map(renderAskCard).join("")
+    : '<div class="empty-state">Δεν έχεις ανοιχτές ενέργειες σε αυτό το project.<br>' +
+      '<button type="button" class="secondary" style="margin-top:12px" onclick="goAsks(\'\')">Δες όλες τις ενέργειες</button></div>';
 
   view.innerHTML =
-    banner +
-    '<div class="ibox-quick-grid">' + enterCards + '</div>' +
-    '<h3 style="margin-top:24px">Ομάδα project</h3>' + teamGrid;
+    '<div class="tile-grid">' + tiles + '</div>' +
+    '<div class="overview-cols">' +
+      '<div><h2 class="section-title" id="overviewMine">Δικές μου ενέργειες</h2>' +
+        '<p class="helptext" style="margin:-4px 0 10px">Εμφανίζονται οι ενέργειες που έχουν ανατεθεί στο email σου.</p>' + mineHtml + '</div>' +
+      '<aside><h2 class="section-title">Χρειάζεται προσοχή</h2>' + attention + '</aside>' +
+    '</div>';
+}
+
+async function loadTeamView() {
+  const view = document.getElementById("teamView");
+  view.innerHTML = "<p style='color:#5a6472'>Φόρτωση...</p>";
+  let data;
+  try {
+    const response = await fetch("/api/projects/" + encodeURIComponent(currentProject) + "/members");
+    data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Σφάλμα φόρτωσης.");
+  } catch (error) {
+    view.innerHTML = errorBox(error.message || "Σφάλμα φόρτωσης.");
+    return;
+  }
+  if (filter !== "__team__") return;
+
+  const members = data.members || [];
+  const ownerCard = data.owner_email
+    ? '<div class="ibox-member-card"><div class="ibox-member-avatar" aria-hidden="true">' + esc(initialsFromEmail(data.owner_email)) + '</div>' +
+      '<div><div class="email">' + esc(data.owner_email) + '</div><span class="status-pill accepted">Δημιουργός</span></div></div>'
+    : "";
+  const memberCards = members.map(function(m) {
+    const active = m.invite_status === "accepted";
+    return '<div class="ibox-member-card"><div class="ibox-member-avatar" aria-hidden="true">' + esc(initialsFromEmail(m.email)) + '</div>' +
+      '<div><div class="email">' + esc(m.email) + '</div><span class="status-pill ' + (active ? "accepted" : "pending") + '">' +
+      (active ? "Ενεργό μέλος" : "Εκκρεμεί πρόσκληση") + '</span></div></div>';
+  }).join("");
+  const grid = (ownerCard || memberCards)
+    ? '<div class="ibox-member-grid">' + ownerCard + memberCards + '</div>'
+    : '<div class="empty-state">Ακόμα μόνο εσύ σε αυτό το project.</div>';
+
+  view.innerHTML =
+    '<div class="toolbar"><h2 class="section-title" style="margin:0">Ομάδα project</h2>' +
+    (data.can_manage ? '<button type="button" onclick="openMembers()">Διαχείριση ομάδας</button>' : "") + '</div>' + grid;
 }
 
 // ---------- Ideas (ported from the retired iBOX prototype, internal to Relay) ----------
@@ -2219,21 +2515,14 @@ document.getElementById("viewSelect").addEventListener("change", function(event)
   load();
 });
 
-document.getElementById("projectSelect").addEventListener("change", async function(e) {
-  currentProject = e.target.value;
-  localStorage.setItem("relay_project", currentProject);
-  await loadProjectAssignees();
-  updateProjectActions();
-  load();
+document.getElementById("sidebarProjects").addEventListener("click", function(event) {
+  const button = event.target.closest("button[data-nav]");
+  if (button) navigate(button.dataset.nav);
 });
-
-document.querySelectorAll(".tabs button").forEach(function(b) {
-  b.onclick = function() {
-    document.querySelectorAll(".tabs button").forEach(function(x){ x.classList.remove("active"); });
-    b.classList.add("active");
-    filter = b.dataset.f;
-    load();
-  };
+window.addEventListener("hashchange", function() {
+  // Κάθε αλλαγή route (σύνδεσμοι, πίσω/μπροστά) μεταφέρει το focus στον τίτλο της νέας οθόνης.
+  routeFocusPending = true;
+  if (currentUser) applyRoute();
 });
 
 document.querySelectorAll("#askStatusTabs button").forEach(function(b) {
