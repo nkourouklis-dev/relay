@@ -8,6 +8,8 @@ import { emailOTP } from "better-auth/plugins";
 import { APIError, createAuthEndpoint, createAuthMiddleware } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import { normalizeCaptureText, nextOccurrence, runMasterTaskImport } from "./master-task-import.js";
+import { handleRelayMcpRequest, relayOAuthMetadata } from "./relay-mcp.js";
+import { APPROVAL_WINDOW_MS, draftCapabilities, isApprovalActive } from "./approval-window.js";
 
 // ---------- Επιτρεπτά emails (Φάση 1) ----------
 // ALLOWED_EMAIL_DOMAIN: π.χ. "kafkas.gr". ALLOWED_EMAILS: ρητές εξαιρέσεις, comma-separated.
@@ -298,6 +300,22 @@ function canonicalRedirect(env, request, url) {
   return Response.redirect(canonical.origin + url.pathname + url.search, 302);
 }
 
+function validateApprovalOrigin(env, request) {
+  const requestUrl = new URL(request.url);
+  let expectedOrigin;
+  try {
+    expectedOrigin = new URL(env.BETTER_AUTH_URL || requestUrl.origin).origin;
+  } catch {
+    return json({ error: "Approval origin is not configured" }, 503);
+  }
+
+  if (request.headers.get("host") !== new URL(expectedOrigin).host ||
+      request.headers.get("origin") !== expectedOrigin) {
+    return json({ error: "Invalid Origin header" }, 403);
+  }
+  return null;
+}
+
 function getDevelopmentSession() {
   return {
     user: {
@@ -377,6 +395,26 @@ async function isProjectMember(env, projectId, actor) {
   }
 }
 
+async function resolveProjectAssignee(env, project, value, previousOwner = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (previousOwner && raw === String(previousOwner).trim()) return raw;
+
+  const email = raw.toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+
+  if (project.created_by_user_id) {
+    const owner = await env.DB.prepare("SELECT email FROM relay_users WHERE id = ?")
+      .bind(project.created_by_user_id).first();
+    if (String(owner?.email || "").toLowerCase() === email) return email;
+  }
+
+  const member = await env.DB.prepare(
+    "SELECT 1 AS ok FROM relay_project_members WHERE project_id = ? AND email = ?"
+  ).bind(project.id, email).first();
+  return member ? email : null;
+}
+
 // Για queries στα asks χωρίς συγκεκριμένο project.
 function askScope(actor) {
   return isAdmin(actor)
@@ -399,7 +437,7 @@ async function getAccessibleProject(env, actor, projectId) {
 // { ask, canView, canManage } — canView: μέλος/owner project· canManage: δημιουργός ask/project ή admin.
 async function getAskAccess(env, actor, askId) {
   const ask = await env.DB.prepare(
-    "SELECT id, project_id, created_by_user_id FROM asks WHERE id = ?"
+    "SELECT id, project_id, created_by_user_id, owner FROM asks WHERE id = ?"
   ).bind(askId).first();
   if (!ask) return { ask: null, canView: false, canManage: false };
   if (isAdmin(actor) || (ask.created_by_user_id && ask.created_by_user_id === actor.id)) {
@@ -1310,6 +1348,246 @@ async function commitCapture(env, { projectId, body, items, createdBy, createdBy
   return { project_id: project.id, source_id: sourceId, extracted: insertedCount };
 }
 
+function createRelayMcpOperations(env) {
+    return {
+      async resolveActor(email, name, tenantId, objectId) {
+        if (!tenantId || !objectId) return null;
+
+        const linkedUser = await env.DB.prepare(
+          `SELECT u.id, u.email, u.role FROM relay_entra_identities e
+           JOIN relay_users u ON u.id = e.user_id
+           WHERE e.tenant_id = ? AND e.object_id = ?`
+        ).bind(tenantId, objectId).first();
+        if (linkedUser) {
+          if (!(await isLoginAllowed(env, linkedUser.email))) return null;
+          return {
+            id: linkedUser.id,
+            email: String(linkedUser.email).toLowerCase(),
+            role: linkedUser.role === "admin" ? "admin" : "user",
+          };
+        }
+
+        const normalizedEmail = String(email || "").trim().toLowerCase();
+        if (!(await isLoginAllowed(env, normalizedEmail))) return null;
+
+        const now = new Date().toISOString();
+        await env.DB.prepare(
+          `INSERT OR IGNORE INTO relay_users (id, name, email, emailVerified, createdAt, updatedAt, role)
+           VALUES (?, ?, ?, 1, ?, ?, 'user')`
+        ).bind(uid(), String(name || normalizedEmail).slice(0, 120), normalizedEmail, now, now).run();
+        const user = await env.DB.prepare(
+          "SELECT id, email, role FROM relay_users WHERE lower(email) = ?"
+        ).bind(normalizedEmail).first();
+        if (!user) return null;
+        await env.DB.prepare(
+          `INSERT OR IGNORE INTO relay_entra_identities (tenant_id, object_id, user_id, linked_email, linked_at)
+           VALUES (?, ?, ?, ?, ?)`
+        ).bind(tenantId, objectId, user.id, normalizedEmail, now).run();
+        const identity = await env.DB.prepare(
+          "SELECT user_id FROM relay_entra_identities WHERE tenant_id = ? AND object_id = ?"
+        ).bind(tenantId, objectId).first();
+        if (identity?.user_id !== user.id) return null;
+        return { id: user.id, email: String(user.email).toLowerCase(), role: user.role === "admin" ? "admin" : "user" };
+      },
+
+      async listProjects(actor) {
+        const { results } = isAdmin(actor)
+          ? await env.DB.prepare(
+              "SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects ORDER BY created_at"
+            ).all()
+          : await env.DB.prepare(
+              `SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects
+               WHERE created_by_user_id = ? OR id IN (SELECT project_id FROM relay_project_members WHERE email = ?)
+               ORDER BY created_at`
+            ).bind(actor.id, actor.email).all();
+        return results || [];
+      },
+
+      async listAsks(actor, projectId, status) {
+        if (!(await getAccessibleProject(env, actor, projectId))) throw new Error("Δεν έχεις πρόσβαση σε αυτό το project.");
+        let query = "SELECT * FROM asks WHERE project_id = ?";
+        const binds = [projectId];
+        if (status === "overdue") {
+          query += " AND due_date IS NOT NULL AND due_date < ? AND status != 'done'";
+          binds.push(new Date().toISOString().slice(0, 10));
+        } else if (status) {
+          query += " AND status = ?";
+          binds.push(status);
+        }
+        query += " ORDER BY due_date LIMIT 100";
+        const { results } = await env.DB.prepare(query).bind(...binds).all();
+        return annotateAskPermissions(env, actor, withComputedOverdue(results || [], new Date().toISOString().slice(0, 10)));
+      },
+
+      async previewCapture(actor, { projectId, sourceText, sourceTitle, sourceUrl }) {
+        const project = await getAccessibleProject(env, actor, projectId);
+        if (!project) throw new Error("Το project δεν βρέθηκε ή δεν έχεις πρόσβαση.");
+        const body = validateCaptureBody(sourceText);
+        const extracted = await extractItems(env, body);
+        const items = validateCaptureItems(extracted.map((item) => ({
+          ...item,
+          due_date: typeof item.due_date === "string" ? item.due_date : "",
+          owner: "",
+          quote: item.quote || item.title,
+          owner_suggestion: item.owner_suggestion || null,
+        })));
+        if (!items.length) return { project_id: project.id, draft_id: null, items: [], assignees: [] };
+
+        const assignees = [];
+        if (project.created_by_user_id) {
+          const owner = await env.DB.prepare("SELECT email, name FROM relay_users WHERE id = ?")
+            .bind(project.created_by_user_id).first();
+          if (owner?.email) assignees.push({ email: String(owner.email).toLowerCase(), name: owner.name || "" });
+        }
+        const { results: members } = await env.DB.prepare(
+          `SELECT m.email, u.name FROM relay_project_members m
+           LEFT JOIN relay_users u ON lower(u.email) = m.email
+           WHERE m.project_id = ? ORDER BY m.email`
+        ).bind(project.id).all();
+        for (const member of members || []) {
+          if (!assignees.some((entry) => entry.email === member.email)) {
+            assignees.push({ email: member.email, name: member.name || "" });
+          }
+        }
+
+        const draftId = uid();
+        const createdAt = new Date().toISOString();
+        const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+        await env.DB.prepare(
+          `INSERT INTO relay_mcp_capture_drafts
+           (id, project_id, actor_user_id, source_title, source_url, items_json, status, created_at, expires_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+        ).bind(
+          draftId, project.id, actor.id, String(sourceTitle || "").slice(0, 240),
+          String(sourceUrl || "").slice(0, 2000), JSON.stringify(items), createdAt, expiresAt
+        ).run();
+
+        const approvalUrl = `${String(env.BETTER_AUTH_URL || "").replace(/\/$/, "")}/mcp-approval.html?draft=${encodeURIComponent(draftId)}`;
+        return { project_id: project.id, project_name: project.name, draft_id: draftId, expires_at: expiresAt, approval_url: approvalUrl, items, assignees };
+      },
+
+      async updateCaptureDraft(actor, { draftId, assignments }) {
+        const draft = await env.DB.prepare(
+          "SELECT * FROM relay_mcp_capture_drafts WHERE id = ? AND actor_user_id = ?"
+        ).bind(draftId, actor.id).first();
+        if (!draft) throw new Error("Το preview draft δεν βρέθηκε ή ανήκει σε άλλο χρήστη.");
+        if (draft.status !== "pending") throw new Error("Το draft δεν είναι πλέον επεξεργάσιμο.");
+        if (draft.expires_at <= new Date().toISOString()) {
+          throw new Error("Το preview έληξε. Ανάλυσε ξανά την πηγή.");
+        }
+        if (await env.DB.prepare("SELECT 1 AS ok FROM relay_mcp_capture_approvals WHERE draft_id = ?").bind(draftId).first()) {
+          throw new Error("Το draft έχει ήδη εγκριθεί και δεν μπορεί να αλλάξει.");
+        }
+
+        const project = await getAccessibleProject(env, actor, draft.project_id);
+        if (!project) throw new Error("Δεν έχεις πλέον πρόσβαση σε αυτό το project.");
+        const items = JSON.parse(draft.items_json);
+        const byIndex = new Map();
+        for (const assignment of assignments) {
+          if (!Number.isInteger(assignment.index) || assignment.index < 0 || assignment.index >= items.length || byIndex.has(assignment.index)) {
+            throw new Error("Μη έγκυρη ή διπλή επιλογή ask.");
+          }
+          byIndex.set(assignment.index, assignment);
+        }
+        if (!byIndex.size) throw new Error("Επίλεξε τουλάχιστον ένα ask για δημιουργία.");
+
+        items.forEach((item) => { item.selected = false; });
+        for (const [index, assignment] of byIndex) {
+          const owner = await resolveProjectAssignee(env, project, assignment.ownerEmail || "");
+          if (owner === null) throw new Error("Κάθε owner πρέπει να είναι μέλος του project.");
+          items[index].owner = owner;
+          items[index].selected = true;
+          if (Object.prototype.hasOwnProperty.call(assignment, "dueDate")) {
+            const dueDate = assignment.dueDate || "";
+            if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) throw new Error("Μη έγκυρη ημερομηνία.");
+            items[index].due_date = dueDate;
+          }
+        }
+
+        const updated = await env.DB.prepare(
+          `UPDATE relay_mcp_capture_drafts SET items_json = ?
+           WHERE id = ? AND actor_user_id = ? AND status = 'pending' AND expires_at > ?`
+        ).bind(JSON.stringify(items), draftId, actor.id, new Date().toISOString()).run();
+        if (!updated.meta?.changes) throw new Error("Το draft άλλαξε ή έληξε. Φτιάξε νέο preview.");
+        const approvalUrl = `${String(env.BETTER_AUTH_URL || "").replace(/\/$/, "")}/mcp-approval.html?draft=${encodeURIComponent(draftId)}`;
+        return {
+          draft_id: draftId,
+          approval_url: approvalUrl,
+          selected: byIndex.size,
+          items: items.map((item, index) => ({ index, selected: !!item.selected, title: item.title, owner: item.owner, due_date: item.due_date, quote: item.quote })),
+        };
+      },
+
+      async commitCapture(actor, { draftId }) {
+        const draft = await env.DB.prepare(
+          "SELECT * FROM relay_mcp_capture_drafts WHERE id = ? AND actor_user_id = ?"
+        ).bind(draftId, actor.id).first();
+        if (!draft) throw new Error("Το preview draft δεν βρέθηκε ή ανήκει σε άλλο χρήστη.");
+        if (draft.status === "committed") return { draft_id: draftId, already_committed: true, created: 0 };
+        if (draft.status !== "pending" && draft.status !== "committing") throw new Error("Το draft δεν είναι διαθέσιμο.");
+
+        const approval = await env.DB.prepare(
+          "SELECT approved_by_user_id, approved_at FROM relay_mcp_capture_approvals WHERE draft_id = ?"
+        ).bind(draftId).first();
+        if (!approval || approval.approved_by_user_id !== actor.id) {
+          throw new Error("Το draft δεν έχει εγκριθεί από τον ίδιο χρήστη στο Relay.");
+        }
+        if (draft.status === "pending" && draft.expires_at <= approval.approved_at) {
+          throw new Error("Το preview είχε λήξει πριν την έγκριση. Ανάλυσε ξανά την πηγή.");
+        }
+        // Η έγκριση ισχύει για περιορισμένο χρόνο. Αν η δημιουργία έχει ήδη ξεκινήσει ('committing'), συνεχίζεται.
+        if (draft.status === "pending" && !isApprovalActive(approval.approved_at)) {
+          throw new Error("Η έγκριση έληξε. Ανάλυσε ξανά την πηγή και ζήτα νέα έγκριση.");
+        }
+
+        const project = await getAccessibleProject(env, actor, draft.project_id);
+        if (!project) throw new Error("Δεν έχεις πλέον πρόσβαση σε αυτό το project.");
+        const items = JSON.parse(draft.items_json);
+        const selected = items.map((item, index) => ({ item, index })).filter(({ item }) => item.selected);
+        if (!selected.length) throw new Error("Το εγκεκριμένο draft δεν περιέχει asks.");
+        for (const { item } of selected) {
+          const owner = await resolveProjectAssignee(env, project, item.owner || "");
+          if (owner === null) throw new Error("Ένα από τα προτεινόμενα μέλη δεν ανήκει πλέον στο project.");
+        }
+
+        if (draft.status === "pending") {
+          await env.DB.prepare(
+            "UPDATE relay_mcp_capture_drafts SET status = 'committing' WHERE id = ? AND status = 'pending'"
+          ).bind(draftId).run();
+        }
+
+        const sourceId = `mcp-${draftId}-source`;
+        const sourceBody = draft.source_url || (draft.source_title ? `Source: ${draft.source_title}` : "Copilot source; full text not retained.");
+        await env.DB.prepare(
+          `INSERT OR IGNORE INTO sources (id, project_id, type, sender, subject, body)
+           VALUES (?, ?, 'copilot', ?, ?, ?)`
+        ).bind(sourceId, project.id, actor.email, draft.source_title || "Copilot capture", sourceBody).run();
+
+        let created = 0;
+      for (const { index, item } of selected) {
+          const askId = `mcp-${draftId}-${index}`;
+          const inserted = await env.DB.prepare(
+            `INSERT OR IGNORE INTO asks
+             (id, project_id, source_id, kind, title, owner, requested_by, created_by, created_by_user_id, due_date, status, source_quote)
+             VALUES (?, ?, ?, 'action', ?, ?, ?, ?, ?, ?, 'open', ?)`
+          ).bind(
+            askId, project.id, sourceId, item.title, item.owner, actor.email, actor.email,
+            actor.id, item.due_date || null, item.quote
+          ).run();
+          if (inserted.meta?.changes) created++;
+          await env.DB.prepare(
+            "INSERT OR IGNORE INTO events (id, ask_id, type, note) VALUES (?, ?, 'created', 'Created from approved Copilot draft')"
+          ).bind(`mcp-${draftId}-${index}-event`, askId).run();
+        }
+
+        await env.DB.prepare(
+          "UPDATE relay_mcp_capture_drafts SET status = 'committed', committed_at = ?, items_json = '[]' WHERE id = ? AND status = 'committing'"
+        ).bind(new Date().toISOString(), draftId).run();
+        return { draft_id: draftId, project_id: project.id, created, selected: selected.length, source_id: sourceId };
+      },
+    };
+  }
+
 async function ingest(env, { projectId, alias, type, sender, subject, body, createdBy }) {
   let project;
   if (projectId) {
@@ -1547,6 +1825,46 @@ async function buildAIInsights(env, project, asks, todayStr) {
   };
 }
 
+// Φορτώνει draft του συνδεδεμένου χρήστη. Ίδια πολιτική με το GET: άλλος χρήστης ή χωρίς πρόσβαση = 404.
+async function loadActorDraft(env, actor, draftId) {
+  const draft = await env.DB.prepare(
+    "SELECT * FROM relay_mcp_capture_drafts WHERE id = ? AND actor_user_id = ?"
+  ).bind(draftId, actor.id).first();
+  if (!draft) return { response: json({ error: "Το preview δεν βρέθηκε ή δεν ανήκει σε αυτόν τον χρήστη." }, 404) };
+  const project = await getAccessibleProject(env, actor, draft.project_id);
+  if (!project) return { response: json({ error: "Το preview δεν βρέθηκε ή δεν έχεις πλέον πρόσβαση." }, 404) };
+  const approval = await env.DB.prepare(
+    "SELECT approved_by_user_id, approved_at FROM relay_mcp_capture_approvals WHERE draft_id = ?"
+  ).bind(draftId).first();
+  return { draft, project, approval };
+}
+
+// ---------- Worker ----------
+async function pruneMcpCaptureDrafts(env, now) {
+  const nowIso = now.toISOString();
+  const approvedCutoff = new Date(now.getTime() - APPROVAL_WINDOW_MS).toISOString();
+  await env.DB.batch([
+    env.DB.prepare(
+      `DELETE FROM relay_mcp_capture_approvals WHERE draft_id IN (
+         SELECT d.id FROM relay_mcp_capture_drafts d
+         LEFT JOIN relay_mcp_capture_approvals a ON a.draft_id = d.id
+         WHERE d.status = 'pending'
+           AND ((a.draft_id IS NULL AND d.expires_at <= ?) OR a.approved_at <= ?)
+       )`
+    ).bind(nowIso, approvedCutoff),
+    env.DB.prepare(
+      `DELETE FROM relay_mcp_capture_drafts
+       WHERE status = 'pending'
+         AND ((expires_at <= ? AND NOT EXISTS (
+           SELECT 1 FROM relay_mcp_capture_approvals a WHERE a.draft_id = relay_mcp_capture_drafts.id
+         )) OR EXISTS (
+           SELECT 1 FROM relay_mcp_capture_approvals a
+           WHERE a.draft_id = relay_mcp_capture_drafts.id AND a.approved_at <= ?
+         ))`
+    ).bind(nowIso, approvedCutoff),
+  ]);
+}
+
 // ---------- Worker ----------
 export default {
   async fetch(request, env) {
@@ -1558,6 +1876,13 @@ export default {
     // Το /api/ingest μένει προσβάσιμο και από το παλιό host για τυχόν εξωτερικούς καλούντες.
     const redirect = canonicalRedirect(env, request, url);
     if (redirect) return redirect;
+
+    if (path === "/.well-known/oauth-protected-resource/mcp" && request.method === "GET") {
+      return relayOAuthMetadata(env, request);
+    }
+    if (path === "/mcp") {
+      return handleRelayMcpRequest(request, env, createRelayMcpOperations(env));
+    }
 
     if (path === "/api/auth" || path.startsWith("/api/auth/")) {
       if (isLocalDevelopment(request) && path === "/api/auth/get-session") {
@@ -1588,6 +1913,7 @@ export default {
         path === "/api/dashboard/insights" ||
         path === "/api/capture/preview" ||
         path === "/api/capture/commit" ||
+        path.startsWith("/api/mcp-capture-drafts/") ||
         path === "/api/ideas" ||
         path.startsWith("/api/ideas/") ||
         path === "/api/gamification/me";
@@ -1598,6 +1924,108 @@ export default {
       }
       const sessionEmail = session?.user?.email || "";
       const actor = session ? getActor(session) : null;
+
+      // --- Απόρριψη draft: μόνο πριν την έγκριση. Το approval record δεν σβήνεται ποτέ. ---
+      const mcpRejectMatch = path.match(/^\/api\/mcp-capture-drafts\/([^/]+)\/reject$/);
+      if (mcpRejectMatch && request.method === "POST") {
+        const originError = validateApprovalOrigin(env, request);
+        if (originError) return originError;
+        const loaded = await loadActorDraft(env, actor, mcpRejectMatch[1]);
+        if (loaded.response) return loaded.response;
+        if (loaded.approval) {
+          return json({ error: "Το preview έχει ήδη εγκριθεί και δεν μπορεί να απορριφθεί. Λήγει αυτόματα." }, 409);
+        }
+        if (loaded.draft.status !== "pending") {
+          return json({ error: "Το preview δεν είναι πλέον διαθέσιμο." }, 409);
+        }
+        // Ατομικά: διαγραφή μόνο αν ακόμα δεν υπάρχει approval (προστασία από ταυτόχρονη έγκριση).
+        const deleted = await env.DB.prepare(
+          `DELETE FROM relay_mcp_capture_drafts
+           WHERE id = ? AND actor_user_id = ? AND status = 'pending'
+             AND NOT EXISTS (SELECT 1 FROM relay_mcp_capture_approvals a WHERE a.draft_id = relay_mcp_capture_drafts.id)`
+        ).bind(loaded.draft.id, actor.id).run();
+        if (!deleted.meta?.changes) {
+          return json({ error: "Το preview άλλαξε ή εγκρίθηκε στο μεταξύ. Ανανέωσε τη σελίδα." }, 409);
+        }
+        return json({ ok: true, rejected: true });
+      }
+
+      // --- Δημιουργία ενεργειών από εγκεκριμένο draft: ίδια commitCapture με το MCP tool. ---
+      const mcpCommitMatch = path.match(/^\/api\/mcp-capture-drafts\/([^/]+)\/commit$/);
+      if (mcpCommitMatch && request.method === "POST") {
+        const originError = validateApprovalOrigin(env, request);
+        if (originError) return originError;
+        const loaded = await loadActorDraft(env, actor, mcpCommitMatch[1]);
+        if (loaded.response) return loaded.response;
+        try {
+          const result = await createRelayMcpOperations(env).commitCapture(actor, { draftId: loaded.draft.id });
+          return json({ ok: true, ...result });
+        } catch (error) {
+          return json({ error: error instanceof Error ? error.message : "Η δημιουργία απέτυχε." }, 409);
+        }
+      }
+
+      const mcpDraftMatch = path.match(/^\/api\/mcp-capture-drafts\/([^/]+)$/);
+      if (mcpDraftMatch && ["GET", "POST"].includes(request.method)) {
+        if (request.method === "POST") {
+          const originError = validateApprovalOrigin(env, request);
+          if (originError) return originError;
+        }
+        const draftId = mcpDraftMatch[1];
+        const draft = await env.DB.prepare(
+          "SELECT * FROM relay_mcp_capture_drafts WHERE id = ? AND actor_user_id = ?"
+        ).bind(draftId, actor.id).first();
+        if (!draft) return json({ error: "Το preview δεν βρέθηκε ή δεν ανήκει σε αυτόν τον χρήστη." }, 404);
+        const project = await getAccessibleProject(env, actor, draft.project_id);
+        if (!project) return json({ error: "Το preview δεν βρέθηκε ή δεν έχεις πλέον πρόσβαση." }, 404);
+        const approval = await env.DB.prepare(
+          "SELECT approved_by_user_id, approved_at FROM relay_mcp_capture_approvals WHERE draft_id = ?"
+        ).bind(draftId).first();
+
+        if (request.method === "GET") {
+          const caps = draftCapabilities({ status: draft.status, expiresAt: draft.expires_at, approval });
+          let createdCount = null;
+          if (draft.status === "committed") {
+            const row = await env.DB.prepare("SELECT COUNT(*) AS c FROM asks WHERE id LIKE ?")
+              .bind("mcp-" + draft.id + "-%").first();
+            createdCount = row ? row.c : 0;
+          }
+          return json({
+            draft_id: draft.id,
+            project_id: project.id,
+            project_name: project.name,
+            source_title: draft.source_title,
+            source_url: draft.source_url,
+            items: JSON.parse(draft.items_json),
+            expires_at: draft.expires_at,
+            status: draft.status,
+            approved: !!approval,
+            approved_at: approval ? approval.approved_at : null,
+            approval_expires_at: caps.approval_expires_at,
+            approval_expired: caps.approval_expired,
+            can_approve: caps.can_approve,
+            can_reject: caps.can_reject,
+            can_create: caps.can_create,
+            created_count: createdCount,
+          });
+        }
+
+        if (approval) return json({ ok: approval.approved_by_user_id === actor.id, already_approved: true });
+        if (draft.status !== "pending" || draft.expires_at <= new Date().toISOString()) {
+          return json({ error: "Το preview έληξε ή δεν είναι πλέον διαθέσιμο." }, 409);
+        }
+        await env.DB.prepare(
+          `INSERT OR IGNORE INTO relay_mcp_capture_approvals (draft_id, approved_by_user_id, approved_at)
+           VALUES (?, ?, ?)`
+        ).bind(draftId, actor.id, new Date().toISOString()).run();
+        const savedApproval = await env.DB.prepare(
+          "SELECT approved_by_user_id, approved_at FROM relay_mcp_capture_approvals WHERE draft_id = ?"
+        ).bind(draftId).first();
+        if (savedApproval?.approved_by_user_id !== actor.id) {
+          return json({ error: "Το preview εγκρίθηκε από άλλον χρήστη." }, 409);
+        }
+        return json({ ok: true, approved_at: savedApproval.approved_at });
+      }
 
       // --- Projects: λίστα ---
       if (path === "/api/projects" && request.method === "GET") {
@@ -1619,14 +2047,17 @@ export default {
         const project = await getAccessibleProject(env, actor, membersMatch[1]);
         if (!project) return json({ error: "Το project δεν βρέθηκε" }, 404);
         const { results } = await env.DB.prepare(
-          "SELECT email, invite_status, invited_at FROM relay_project_members WHERE project_id = ? ORDER BY email"
+          `SELECT m.email, u.name, m.invite_status, m.invited_at
+           FROM relay_project_members m LEFT JOIN relay_users u ON lower(u.email) = m.email
+           WHERE m.project_id = ? ORDER BY m.email`
         ).bind(project.id).all();
         const owner = project.created_by_user_id
-          ? await env.DB.prepare("SELECT email FROM relay_users WHERE id = ?").bind(project.created_by_user_id).first()
+          ? await env.DB.prepare("SELECT email, name FROM relay_users WHERE id = ?").bind(project.created_by_user_id).first()
           : null;
         return json({
           project_id: project.id,
           owner_email: owner ? String(owner.email).toLowerCase() : "",
+          owner_name: owner?.name || "",
           can_manage: canManageProject(actor, project),
           members: results || [],
         });
@@ -1857,13 +2288,15 @@ export default {
         if (!title) return json({ error: "Το title είναι υποχρεωτικό" }, 400);
         const project = await getAccessibleProject(env, actor, b.project_id);
         if (!project) return json({ error: "Project not found" }, 404);
+        const owner = await resolveProjectAssignee(env, project, b.owner);
+        if (owner === null) return json({ error: "Ο owner πρέπει να είναι μέλος του project." }, 400);
 
         const id = uid();
         await env.DB.prepare(
           `INSERT INTO asks (id, project_id, title, owner, requested_by, created_by, created_by_user_id, due_date)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         ).bind(
-          id, project.id, title, b.owner || "", b.requested_by || "",
+          id, project.id, title, owner, b.requested_by || "",
           sessionEmail, actor.id, b.due_date || null
         ).run();
         return json({ id, ok: true });
@@ -1907,10 +2340,13 @@ export default {
         if (!access.canManage) {
           return json({ error: "Επεξεργασία μόνο από τον δημιουργό του ask, τον δημιουργό του project ή admin." }, 403);
         }
+        const project = await getProjectById(env, access.ask.project_id);
+        const resolvedOwner = await resolveProjectAssignee(env, project, owner, access.ask.owner);
+        if (resolvedOwner === null) return json({ error: "Ο owner πρέπει να είναι μέλος του project." }, 400);
 
         await env.DB.prepare(
           `UPDATE asks SET title = ?, owner = ?, due_date = ?, status = ? WHERE id = ?`
-        ).bind(title, owner, dueDate, status, askId).run();
+        ).bind(title, resolvedOwner, dueDate, status, askId).run();
 
         await env.DB.prepare(
           `INSERT INTO events (id, ask_id, type, note) VALUES (?, ?, 'updated', 'Ask edited by user')`
@@ -2094,13 +2530,19 @@ export default {
         const b = await request.json();
         const projectId = typeof b.project_id === "string" ? b.project_id.trim() : "";
         if (!projectId) return json({ error: "project_id απαιτείται" }, 400);
-        if (!(await getAccessibleProject(env, actor, projectId))) {
+        const project = await getAccessibleProject(env, actor, projectId);
+        if (!project) {
           return json({ error: "Project not found" }, 404);
         }
 
         try {
           const body = validateCaptureBody(b.body);
           const items = validateCaptureItems(b.items);
+          for (const item of items) {
+            const owner = await resolveProjectAssignee(env, project, item.owner);
+            if (owner === null) throw new Error("Κάθε owner πρέπει να είναι μέλος του project.");
+            item.owner = owner;
+          }
           const result = await commitCapture(env, {
             projectId,
             body,
@@ -2171,6 +2613,11 @@ export default {
     ctx.waitUntil(
       dispatchDueReminders(env, now).catch((error) => {
         console.log("Reminder dispatch failed", { error: String(error && error.message || error) });
+      })
+    );
+    ctx.waitUntil(
+      pruneMcpCaptureDrafts(env, now).catch((error) => {
+        console.log("MCP draft cleanup failed", { error: String(error && error.message || error) });
       })
     );
   },

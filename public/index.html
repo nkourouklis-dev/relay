@@ -48,9 +48,9 @@
 }
 </script>
 <style>
-    :root{--v:#243b7a;--v-strong:#182957;--s:#08a7c7;--ink:#15213b;--grey:#64748b;--muted:#94a3b8;
+    :root{--v:#243b7a;--v-strong:#182957;--s:#08a7c7;--ink:#15213b;--grey:#526277;--muted:#5b6b82;
       --line:#dbe3ef;--line-strong:#c5d2e3;--bg:#f4f7fb;--surface:#fff;--surface-soft:#eef3f9;
-      --red:#d45555;--redbg:#fff0ef;--green:#138a63;--greenbg:#e9f8f1;--amber:#bd7b18;--amberbg:#fff6df;
+      --red:#b42318;--redbg:#fff0ef;--green:#0d6b4c;--greenbg:#e9f8f1;--amber:#8a5a0a;--amberbg:#fff6df;
       --blue:#116b88;--bluebg:#e7f7fb;--cyan:#08a7c7;--shadow-sm:0 2px 8px rgba(21,33,59,.06);
       --shadow-md:0 12px 30px rgba(21,33,59,.10);--radius:12px;--radius-sm:8px;--space:8px}
     *{box-sizing:border-box}
@@ -58,7 +58,8 @@
     body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg);min-width:320px;overflow-x:hidden}
     button,input,select,textarea{font:inherit}
     button{min-height:44px}
-    button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid rgba(8,167,199,.35);outline-offset:2px}
+    button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid var(--v-strong);outline-offset:2px}
+    .app-sidebar :focus-visible{outline-color:#fff}
     header{height:72px;padding:0 28px 0 304px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.94);position:sticky;top:0;z-index:20;backdrop-filter:blur(12px)}
     header b{font-size:22px;letter-spacing:.02em;color:var(--v)}
     header span.tagline{color:var(--grey);font-size:13px}
@@ -285,9 +286,18 @@
   .owner-evidence{color:var(--grey);font-size:12px;margin:4px 0 10px}
   .owner-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
   .owner-actions input{min-width:190px;flex:1}
+  .owner-actions select{min-width:190px;flex:1}
   .capture-preview .actions{justify-content:flex-start;margin-top:12px}
   .capture-preview button{scroll-margin-bottom:132px}
   .capture-preview .actions button{min-height:44px}
+  /* ---- Προσβασιμότητα (βήμα 1): στόχοι αφής 44px, χωρίς hover-lift, reduced motion ---- */
+  button:hover,.ibox-quick-card:hover,.ibox-enter-card:hover{transform:none}
+  .actions button,.member-list button,.action-menu-content button,.ibox-subnav button{min-height:44px}
+  .ibox-idea-card .events-toggle{min-height:44px;padding:0 8px}
+  @media (prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+  }
   @media (max-width:900px){.chart-grid{grid-template-columns:minmax(0,1fr);width:100%}.chart-card{width:100%}}
   @media (max-width:900px){header{padding-left:84px}#app.app-shell{padding-left:28px}.app-sidebar{transform:translateX(-102%);transition:transform .24s ease}.app-sidebar.is-open{transform:translateX(0)}.drawer-backdrop.is-open{display:block;position:fixed;inset:0;background:rgba(21,33,59,.42);z-index:25}.mobile-menu{display:inline-grid;place-items:center;width:44px;padding:0;background:transparent;box-shadow:none;color:var(--v);font-size:20px}.mobile-menu:hover{background:var(--surface-soft);transform:none;box-shadow:none}.mobile-bottom-nav{position:fixed;left:12px;right:12px;bottom:12px;z-index:22;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;padding:6px;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-md)}.mobile-bottom-nav button{background:transparent;color:var(--grey);box-shadow:none;font-size:11px}.mobile-bottom-nav button:hover{color:var(--v);background:var(--surface-soft);transform:none;box-shadow:none}.mobile-bottom-nav button.active{color:var(--v);background:var(--surface-soft);font-weight:700}.mobile-bottom-nav-primary{color:var(--v) !important;font-weight:700}}
   @media (max-width:720px){header{height:64px;padding:0 14px;gap:8px}header b{font-size:19px}header span.tagline{display:none}#app.app-shell{padding:18px 14px 112px}.workspace-content{width:100%}.row{gap:8px}.tabs{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}.tabs button{flex:0 0 auto}.card{flex-direction:column;padding:16px}.card>div:last-child{width:100%;text-align:left!important;min-width:0!important}.actions{justify-content:flex-start}.edit-grid{grid-template-columns:1fr}.stat-grid{grid-template-columns:repeat(2,1fr)}.chart-grid{grid-template-columns:1fr}.dash-toolbar{display:grid;grid-template-columns:1fr 1fr}.dash-toolbar button{width:100%;font-size:12px}.insight-grid{grid-template-columns:1fr}table.report{display:block;overflow-x:auto;white-space:nowrap}.auth-view{margin:8vh 14px 0;padding:22px}.auth-view form{flex-direction:column}.auth-view form button{width:100%}#whoami{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.toast{left:14px;right:14px;bottom:86px}}
@@ -310,18 +320,18 @@
   <div class="sidebar-label">Workspace</div>
   <nav class="sidebar-nav" aria-label="Workspace">
     <button type="button" id="sidebarHomeButton" onclick="selectHome()"><span class="nav-icon">🏠</span>Αρχική</button>
-    <button type="button" id="sidebarAllAsksButton" onclick="selectAllAsks()"><span class="nav-icon">▦</span>Όλα τα asks</button>
+    <button type="button" id="sidebarAllAsksButton" onclick="selectAllAsks()"><span class="nav-icon">▦</span>Όλες οι ενέργειες</button>
     <button type="button" id="sidebarDashboardButton" onclick="selectDashboard()"><span class="nav-icon">◫</span>Dashboard</button>
     <button type="button" onclick="openAIInsights()"><span class="nav-icon">🤖</span>AI Insights</button>
     <button type="button" id="sidebarIdeasButton" onclick="selectIdeas()"><span class="nav-icon">💡</span>Ιδέες ομάδας</button>
   </nav>
   <div class="sidebar-label">Project</div>
-  <label class="sidebar-project-label" for="projectSelect">Current project</label>
-  <select id="projectSelect" class="sidebar-project" aria-label="Current project"></select>
+  <label class="sidebar-project-label" for="projectSelect">Τρέχον project</label>
+  <select id="projectSelect" class="sidebar-project" aria-label="Τρέχον project"></select>
   <div class="sidebar-nav" style="margin-top:8px">
-    <button type="button" onclick="createProject()"><span class="nav-icon">＋</span>New project</button>
+    <button type="button" onclick="createProject()"><span class="nav-icon">＋</span>Νέο project</button>
     <button type="button" onclick="openMembers()"><span class="nav-icon">👥</span>Ομάδα project</button>
-    <button type="button" class="delete-project-action" onclick="deleteCurrentProject()"><span class="nav-icon">⌫</span>Delete project</button>
+    <button type="button" class="delete-project-action" onclick="deleteCurrentProject()"><span class="nav-icon">⌫</span>Διαγραφή project</button>
   </div>
   <div class="sidebar-spacer"></div>
   <div class="sidebar-nav">
@@ -357,18 +367,18 @@
 
   <div class="tabs">
     <button data-f="__home__" class="active">🏠 Αρχική</button>
-    <button data-f="__asks__">▦ Asks</button>
+    <button data-f="__asks__">▦ Ενέργειες</button>
     <button data-f="__dashboard__">📊 Dashboard</button>
     <button data-f="__ideas__">💡 Ιδέες</button>
   </div>
   <div class="ibox-subnav" id="askStatusTabs" style="display:none">
     <button data-sf="" class="active">Όλα</button>
-    <button data-sf="overdue">Καθυστερημένα</button>
-    <button data-sf="accepted">Αποδεκτά</button>
+    <button data-sf="overdue">Εκπρόθεσμες</button>
+    <button data-sf="accepted">Αναλήφθηκαν</button>
     <button data-sf="done">Ολοκληρωμένα</button>
   </div>
   <div class="legend" id="tabsLegend">
-    ℹ️ Accept = ανάληψη ask · Done = ολοκληρώθηκε · 🔒 = επεξεργασία μόνο από τον δημιουργό του ask/project ή admin
+    ℹ️ Ανάληψη = αναλαμβάνεις την ενέργεια · Ολοκλήρωση = ολοκληρώθηκε · 🔒 = επεξεργασία μόνο από τον δημιουργό της ενέργειας/project ή admin
   </div>
   <div class="view-bar" id="viewBar">
     <label for="viewSelect">Προβολή:</label>
@@ -391,20 +401,23 @@
   <div id="list"></div>
 
   <div id="createSection">
-    <h3>➕ Νέο ask</h3>
+    <h3>➕ Νέα ενέργεια</h3>
     <div class="helptext">Τίτλος, owner (προαιρετικό) και ημερομηνία (προαιρετική).</div>
     <div class="row">
       <input id="t" placeholder="Τίτλος (π.χ. Στείλε το BRD)" style="flex:2;min-width:220px"/>
-      <input id="o" placeholder="Owner" style="flex:1;min-width:140px"/>
+      <select id="o" aria-label="Υπεύθυνος" style="flex:1;min-width:180px">
+        <option value="">Χωρίς ανάθεση</option>
+      </select>
       <input id="d" type="date" />
       <button onclick="addAsk()">Προσθήκη</button>
     </div>
 
     <h3>📋 Καταγραφή κειμένου</h3>
-    <div class="helptext">Επικόλλησε email, chat ή πρακτικά συνάντησης — το AI εξάγει asks αυτόματα.</div>
-    <textarea id="paste" placeholder="Επικόλλησε κείμενο εδώ..."></textarea>
+    <div class="helptext">Επικόλλησε email, chat ή πρακτικά συνάντησης — εντοπίζονται προτάσεις για ενέργειες, που ελέγχεις πριν δημιουργηθεί οτιδήποτε.</div>
+    <div class="helptext" id="captureStorageNote" style="color:var(--amber)"><b>Το κείμενο που επικολλάς αποθηκεύεται ως πηγή στο project.</b></div>
+    <textarea id="paste" placeholder="Επικόλλησε κείμενο εδώ..." aria-describedby="captureStorageNote"></textarea>
     <div class="row" style="margin-top:10px">
-      <button id="extractButton" class="secondary" onclick="ingest()">✨ Εξαγωγή asks</button>
+      <button id="extractButton" class="secondary" onclick="ingest()">Εντοπισμός προτάσεων</button>
       <button class="secondary" onclick="loadExample()">📝 Παράδειγμα</button>
       <span id="msg" style="align-self:center;color:var(--grey)"></span>
     </div>
@@ -413,7 +426,7 @@
  </div>
 </main>
 <nav class="mobile-bottom-nav" aria-label="Πλοήγηση">
-  <button type="button" id="navAsksButton" onclick="selectAllAsks()"><span aria-hidden="true">▦</span><br>Asks</button>
+  <button type="button" id="navAsksButton" onclick="selectAllAsks()"><span aria-hidden="true">▦</span><br>Ενέργειες</button>
   <button type="button" id="navCaptureButton" class="mobile-bottom-nav-primary" onclick="focusCapture()"><span aria-hidden="true">＋</span><br>Καταγραφή</button>
   <button type="button" id="navDashboardButton" onclick="selectDashboard()"><span aria-hidden="true">◫</span><br>Dashboard</button>
 </nav>
@@ -428,6 +441,7 @@ let currentUserId = "";
 let currentRole = "user";
 let projectsById = {};
 let currentProject = localStorage.getItem("relay_project") || "";
+let projectAssignees = [];
 let capturePreviewItems = [];
 let capturePreviewBody = "";
 
@@ -444,7 +458,7 @@ const EXAMPLE_MOM =
 
 function loadExample() {
   document.getElementById("paste").value = EXAMPLE_MOM;
-  document.getElementById("msg").textContent = "Παράδειγμα φορτώθηκε — πάτα «Εξαγωγή asks».";
+  document.getElementById("msg").textContent = "Παράδειγμα φορτώθηκε — πάτα «Εντοπισμός προτάσεων».";
 }
 
 function esc(s) {
@@ -658,6 +672,8 @@ async function loadProjects() {
   if (!projects.length) {
     select.innerHTML = "<option value=''>(κανένα project ακόμα)</option>";
     currentProject = "";
+    projectAssignees = [];
+    renderOwnerPicker();
     updateProjectActions();
     return;
   }
@@ -673,7 +689,62 @@ async function loadProjects() {
     .join("");
 
   localStorage.setItem("relay_project", currentProject);
+  await loadProjectAssignees();
   updateProjectActions();
+}
+
+async function loadProjectAssignees() {
+  projectAssignees = [];
+  const picker = document.getElementById("o");
+  if (picker) picker.value = "";
+  if (currentProject) {
+    try {
+      const response = await fetch("/api/projects/" + encodeURIComponent(currentProject) + "/members");
+      const data = await response.json();
+      if (response.ok) {
+        const members = Array.isArray(data.members) ? data.members : [];
+        if (data.owner_email) {
+          projectAssignees.push({ email: data.owner_email, name: data.owner_name || "" });
+        }
+        members.forEach(function(member) {
+          if (member.email) projectAssignees.push({ email: member.email, name: member.name || "" });
+        });
+        const seen = new Set();
+        projectAssignees = projectAssignees.filter(function(member) {
+          const email = String(member.email).toLowerCase();
+          if (seen.has(email)) return false;
+          seen.add(email);
+          member.email = email;
+          return true;
+        });
+      }
+    } catch (error) {
+      projectAssignees = [];
+    }
+  }
+  renderOwnerPicker();
+}
+
+function ownerOptions(selectedOwner, keepLegacy) {
+  const selected = String(selectedOwner || "").trim();
+  const normalized = selected.toLowerCase();
+  let found = false;
+  let html = '<option value="">Χωρίς ανάθεση</option>';
+  projectAssignees.forEach(function(member) {
+    const isSelected = member.email === normalized;
+    if (isSelected) found = true;
+    const label = member.name ? esc(member.name) + " · " + esc(member.email) : esc(member.email);
+    html += '<option value="' + esc(member.email) + '" ' + (isSelected ? "selected" : "") + '>' + label + '</option>';
+  });
+  if (keepLegacy && selected && !found) {
+    html += '<option value="' + esc(selected) + '" selected>Legacy, μη συνδεδεμένος: ' + esc(selected) + '</option>';
+  }
+  return html;
+}
+
+function renderOwnerPicker() {
+  const picker = document.getElementById("o");
+  if (picker) picker.innerHTML = ownerOptions(picker.value, false);
 }
 
 async function createProject() {
@@ -707,7 +778,7 @@ async function deleteCurrentProject() {
 
   const confirmed = confirm(
     "Θέλεις σίγουρα να διαγράψεις το project \"" + projectName + "\";\n\n" +
-    "Θα διαγραφούν ΟΛΑ τα asks μέσα του."
+    "Θα διαγραφούν ΟΛΕΣ οι ενέργειες μέσα του."
   );
   if (!confirmed) return;
 
@@ -752,17 +823,17 @@ async function loadDashboard() {
 
   html += '<div class="stat-grid">' +
     '<div class="stat-card"><div class="stat-num">' + t.total + '</div><div class="stat-label">Σύνολο</div></div>' +
-    '<div class="stat-card"><div class="stat-num">' + (t.open || 0) + '</div><div class="stat-label">Open</div></div>' +
-    '<div class="stat-card st-accepted"><div class="stat-num">' + (t.accepted || 0) + '</div><div class="stat-label">Accepted</div></div>' +
-    '<div class="stat-card st-done"><div class="stat-num">' + (t.done || 0) + '</div><div class="stat-label">Done</div></div>' +
-    '<div class="stat-card st-overdue"><div class="stat-num">' + (t.overdue || 0) + '</div><div class="stat-label">Καθυστερημένα</div></div>' +
+    '<div class="stat-card"><div class="stat-num">' + (t.open || 0) + '</div><div class="stat-label">Ανοιχτές</div></div>' +
+    '<div class="stat-card st-accepted"><div class="stat-num">' + (t.accepted || 0) + '</div><div class="stat-label">Αναλήφθηκαν</div></div>' +
+    '<div class="stat-card st-done"><div class="stat-num">' + (t.done || 0) + '</div><div class="stat-label">Ολοκληρώθηκαν</div></div>' +
+    '<div class="stat-card st-overdue"><div class="stat-num">' + (t.overdue || 0) + '</div><div class="stat-label">Εκπρόθεσμες</div></div>' +
   '</div>';
 
-  html += '<h3 style="margin-top:0">👤 Ανά Owner (ποιος τι χρωστάει)</h3>';
+  html += '<h3 style="margin-top:0">👤 Ανά υπεύθυνο (ποιος τι χρωστάει)</h3>';
   if (!data.by_owner.length) {
-    html += "<p style='color:#5a6472;font-size:13px'>Δεν υπάρχουν asks ακόμα.</p>";
+    html += "<p style='color:#5a6472;font-size:13px'>Δεν υπάρχουν ενέργειες ακόμα.</p>";
   } else {
-    html += '<table class="report"><tr><th>Owner</th><th>Σύνολο</th><th>Open</th><th>Accepted</th><th>Done</th><th>Καθυστερημένα</th></tr>';
+    html += '<table class="report"><tr><th>Υπεύθυνος</th><th>Σύνολο</th><th>Ανοιχτές</th><th>Αναλήφθηκαν</th><th>Ολοκληρώθηκαν</th><th>Εκπρόθεσμες</th></tr>';
     data.by_owner.forEach(function(o) {
       html += '<tr><td>' + esc(o.name) + '</td>' +
         '<td class="num">' + o.total + '</td>' +
@@ -776,9 +847,9 @@ async function loadDashboard() {
 
   html += '<h3>✍️ Ανά Δημιουργό (ποιος έφτιαξε τι)</h3>';
   if (!data.by_creator.length) {
-    html += "<p style='color:#5a6472;font-size:13px'>Δεν υπάρχουν asks ακόμα.</p>";
+    html += "<p style='color:#5a6472;font-size:13px'>Δεν υπάρχουν ενέργειες ακόμα.</p>";
   } else {
-    html += '<table class="report"><tr><th>Δημιουργός</th><th>Asks που έφτιαξε</th></tr>';
+    html += '<table class="report"><tr><th>Δημιουργός</th><th>Ενέργειες που δημιούργησε</th></tr>';
     data.by_creator.forEach(function(c) {
       html += '<tr><td>' + esc(c.name) + '</td><td class="num">' + c.total + '</td></tr>';
     });
@@ -786,8 +857,8 @@ async function loadDashboard() {
   }
 
   html += '<div class="chart-grid">' +
-    '<div class="chart-card"><h4>Κατάσταση asks</h4><canvas id="statusChart"></canvas></div>' +
-    '<div class="chart-card"><h4>Asks ανά Owner</h4><canvas id="ownerChart"></canvas></div>' +
+    '<div class="chart-card"><h4>Κατάσταση ενεργειών</h4><canvas id="statusChart"></canvas></div>' +
+    '<div class="chart-card"><h4>Ενέργειες ανά υπεύθυνο</h4><canvas id="ownerChart"></canvas></div>' +
   '</div>';
 
   dash.innerHTML = html;
@@ -811,7 +882,7 @@ function renderDashboardCharts(data) {
     statusChartInstance = new Chart(statusCtx, {
       type: "doughnut",
       data: {
-        labels: ["Open", "Accepted", "Done", "Καθυστερημένα"],
+        labels: ["Ανοιχτές", "Αναλήφθηκαν", "Ολοκληρώθηκαν", "Εκπρόθεσμες"],
         datasets: [{
           data: [t.open || 0, t.accepted || 0, t.done || 0, t.overdue || 0],
           backgroundColor: ["#a5b4fc", "#0ea5e9", "#166534", "#b91c1c"],
@@ -830,9 +901,9 @@ function renderDashboardCharts(data) {
       data: {
         labels: owners.map(function(o){ return o.name; }),
         datasets: [
-          { label: "Open", data: owners.map(function(o){ return o.open || 0; }), backgroundColor: "#a5b4fc" },
-          { label: "Accepted", data: owners.map(function(o){ return o.accepted || 0; }), backgroundColor: "#0ea5e9" },
-          { label: "Done", data: owners.map(function(o){ return o.done || 0; }), backgroundColor: "#166534" },
+          { label: "Ανοιχτές", data: owners.map(function(o){ return o.open || 0; }), backgroundColor: "#a5b4fc" },
+          { label: "Αναλήφθηκαν", data: owners.map(function(o){ return o.accepted || 0; }), backgroundColor: "#0ea5e9" },
+          { label: "Ολοκληρώθηκαν", data: owners.map(function(o){ return o.done || 0; }), backgroundColor: "#166534" },
         ],
       },
       options: {
@@ -894,7 +965,7 @@ async function loadAIInsights() {
 
     box.innerHTML = '<div class="ai-insights"><h4>🤖 AI Insights</h4>' +
       '<div class="insight-grid">' +
-        '<div class="insight"><h5>Καθυστερημένα (' + data.counts.overdue + ')</h5>' + renderItems(data.overdue) + '</div>' +
+        '<div class="insight"><h5>Εκπρόθεσμες (' + data.counts.overdue + ')</h5>' + renderItems(data.overdue) + '</div>' +
         '<div class="insight"><h5>Blocked (' + data.counts.blocked + ')</h5>' + renderItems(data.blocked) + '</div>' +
         '<div class="insight"><h5>Χωρίς owner (' + data.counts.unassigned + ')</h5>' + renderItems(data.unassigned) + '</div>' +
       '</div><p class="risk-summary"><b>Εκτίμηση κινδύνου έργου:</b> ' + esc(data.risk_summary) + '</p></div>';
@@ -1101,7 +1172,7 @@ async function load() {
   const asks = view.filter ? allAsks.filter(view.filter) : allAsks;
 
   if (!asks.length) {
-    list.innerHTML = "<p style='color:#5a6472'>Κανένα ask" + (currentView ? " σε αυτή την προβολή" : "") + ".</p>";
+    list.innerHTML = "<p style='color:#5a6472'>Καμία ενέργεια" + (currentView ? " σε αυτή την προβολή" : "") + ".</p>";
     return;
   }
 
@@ -1178,16 +1249,17 @@ function parseDetails(ask) {
   }
 }
 
+const STATUS_LABELS = { open: "Ανοιχτή", accepted: "Αναλήφθηκε", done: "Ολοκληρώθηκε" };
 const PRIORITY_LABELS = { critical: "Critical", high: "High", medium: "Medium", low: "Low" };
 
 function renderAskCard(ask) {
   const canEdit = canManage(ask);
   const editDeleteButtons = canEdit
-    ? '<button class="edit-button" onclick="showEdit(\'' + esc(ask.id) + '\')">Edit</button>' +
-      '<button class="delete-button" onclick="deleteAsk(\'' + esc(ask.id) + '\')">Delete</button>'
+    ? '<button class="edit-button" onclick="showEdit(\'' + esc(ask.id) + '\')">Επεξεργασία</button>' +
+      '<button class="delete-button" onclick="deleteAsk(\'' + esc(ask.id) + '\')">Διαγραφή</button>'
     : '<span class="locked-note">🔒 μόνο δημιουργός ή admin</span>';
 
-  const overdueBadge = ask.is_overdue ? '<span class="pill overduebadge">⚠️ Καθυστερημένο</span>' : "";
+  const overdueBadge = ask.is_overdue ? '<span class="pill overduebadge">⚠️ Εκπρόθεσμη</span>' : "";
   const blockingBadge = ask.go_live_blocking === "yes"
     ? '<span class="pill blocking">⛔ Go-Live blocking</span>'
     : ask.go_live_blocking === "potential" ? '<span class="pill blocking">⚠️ Πιθανό blocking</span>' : "";
@@ -1229,12 +1301,12 @@ function renderAskCard(ask) {
       '</div>' +
       '<div style="text-align:right;min-width:150px">' +
         priorityPill +
-        '<span class="pill ' + esc(ask.status) + '">' + esc(ask.status) + '</span>' +
+        '<span class="pill ' + esc(ask.status) + '">' + esc(STATUS_LABELS[ask.status] || ask.status) + '</span>' +
         overdueBadge + blockingBadge +
-        '<details class="action-menu"><summary aria-label="Ask actions" title="Ask actions">⋯</summary>' +
+        '<details class="action-menu"><summary aria-label="Επιλογές ενέργειας" title="Επιλογές ενέργειας">⋯</summary>' +
           '<div class="action-menu-content">' +
-            '<button title="Ανάληψη ask" onclick="setStatus(\'' + esc(ask.id) + '\',\'accepted\')">Accept</button>' +
-            '<button title="Ολοκληρώθηκε" onclick="setStatus(\'' + esc(ask.id) + '\',\'done\')">Done</button>' +
+            '<button title="Ανάληψη ενέργειας" onclick="setStatus(\'' + esc(ask.id) + '\',\'accepted\')">Ανάληψη</button>' +
+            '<button title="Ολοκληρώθηκε" onclick="setStatus(\'' + esc(ask.id) + '\',\'done\')">Ολοκλήρωση</button>' +
             editDeleteButtons +
           '</div>' +
         '</details>' +
@@ -1256,7 +1328,7 @@ async function addAsk() {
   const title = document.getElementById("t").value.trim();
   if (!title) return;
 
-  await fetch("/api/asks", {
+  const response = await fetch("/api/asks", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -1267,10 +1339,16 @@ async function addAsk() {
       created_by: currentUser,
     }),
   });
+  const result = await response.json().catch(function() { return {}; });
+  if (!response.ok) {
+    document.getElementById("msg").textContent = result.error || "Η δημιουργία της ενέργειας απέτυχε.";
+    return;
+  }
 
   document.getElementById("t").value = "";
   document.getElementById("o").value = "";
   document.getElementById("d").value = "";
+  document.getElementById("msg").textContent = "";
   load();
 }
 
@@ -1310,74 +1388,78 @@ async function ingest() {
     capturePreviewItems = j.items || [];
     capturePreviewBody = body;
     renderCapturePreview();
-    msgEl.textContent = "Βρέθηκαν " + capturePreviewItems.length + " υποψήφια asks — επιβεβαίωσε τον owner πριν τη δημιουργία.";
+    msgEl.textContent = "Βρέθηκαν " + capturePreviewItems.length + " προτάσεις — έλεγξε τον υπεύθυνο πριν τη δημιουργία.";
   } catch (e) {
     msgEl.textContent = "Η ανάλυση απέτυχε (δίκτυο). Δοκίμασε ξανά.";
   } finally {
     extractingAsks = false;
-    if (button) { button.disabled = false; button.textContent = "✨ Εξαγωγή asks"; }
+    if (button) { button.disabled = false; button.textContent = "Εντοπισμός προτάσεων"; }
   }
 }
 
+function createButtonLabel() {
+  const n = capturePreviewItems.length;
+  const name = currentProjectName();
+  return "Δημιουργία " + (n === 1 ? "1 ενέργειας" : n + " ενεργειών") + (name ? " στο " + name : "");
+}
+
 function confidenceText(suggestion) {
-  if (!suggestion) return "Δεν υπάρχει owner suggestion.";
-  return Math.round((Number(suggestion.confidence) || 0) * 100) + "% · " + suggestion.confidence_label;
+  if (!suggestion) return "Δεν υπάρχει πρόταση για υπεύθυνο.";
+  return "Βεβαιότητα υπεύθυνου: " + ({ high: "Υψηλή", medium: "Μέτρια", low: "Χαμηλή" }[suggestion.confidence_label] || "Χαμηλή");
 }
 
 function renderCapturePreview() {
   const preview = document.getElementById("capturePreview");
   if (!capturePreviewItems.length) {
     preview.hidden = false;
-    preview.innerHTML = '<p class="insight-empty">Δεν εντοπίστηκαν asks.</p>';
+    preview.innerHTML = '<p class="insight-empty">Δεν εντοπίστηκαν προτάσεις.</p>';
     return;
   }
 
   preview.hidden = false;
-  preview.innerHTML = '<h3>🔎 Preview extraction</h3>' + capturePreviewItems.map(function(item, index) {
+  preview.innerHTML = '<h3>Προτάσεις από το κείμενο</h3><p class="helptext">Οι προτάσεις δεν είναι ενέργειες μέχρι να πατήσεις «Δημιουργία». Όταν δημιουργήσεις τις ενέργειες, το κείμενο που επικόλλησες αποθηκεύεται ως πηγή στο project.</p>' + capturePreviewItems.map(function(item, index) {
     const suggestion = item.owner_suggestion;
     const ownerValue = item.owner || "";
     const suggestionText = suggestion && (suggestion.display_name || suggestion.email)
       ? esc(suggestion.display_name || suggestion.email) + (suggestion.email ? " · " + esc(suggestion.email) : "")
-      : "Χωρίς τεκμηριωμένο owner";
+      : "Χωρίς τεκμηριωμένο υπεύθυνο";
     const evidence = suggestion && suggestion.evidence && suggestion.evidence.length
-      ? "Evidence: " + suggestion.evidence.map(function(value) { return "“" + esc(value) + "”"; }).join(" · ")
-      : "Evidence: —";
+      ? "Τεκμηρίωση: " + suggestion.evidence.map(function(value) { return "“" + esc(value) + "”"; }).join(" · ")
+      : "Τεκμηρίωση: —";
     return '<div class="capture-item" data-capture-index="' + index + '">' +
       '<h4>' + esc(item.title) + '</h4>' +
-      '<p class="capture-quote">Quote: “' + esc(item.quote || item.title) + '”</p>' +
-      '<div class="owner-suggestion"><b>Suggested owner:</b> ' + suggestionText +
+      '<p class="capture-quote">Απόσπασμα: “' + esc(item.quote || item.title) + '”</p>' +
+      '<div class="owner-suggestion"><b>Πρόταση για υπεύθυνο:</b> ' + suggestionText +
         (suggestion ? " · " + confidenceText(suggestion) : "") + '</div>' +
       '<p class="owner-evidence">' + evidence + '</p>' +
       '<div class="owner-actions">' +
-        '<input id="capture-owner-' + index + '" value="' + esc(ownerValue) + '" placeholder="Owner ή email" oninput="updatePreviewOwnerFromInput(' + index + ', this.value)" />' +
-        '<button type="button" onclick="confirmSuggestedOwner(' + index + ')">Επιβεβαίωση πρότασης</button>' +
-        '<button type="button" class="secondary" onclick="confirmEditedOwner(' + index + ')">Επιλογή ή αλλαγή owner</button>' +
-        '<button type="button" class="cancel-button" onclick="keepWithoutOwner(' + index + ')">Χωρίς owner</button>' +
+        '<select id="capture-owner-' + index + '" aria-label="Υπεύθυνος για την ενέργεια" onchange="updatePreviewOwnerFromInput(' + index + ', this.value)">' + ownerOptions(ownerValue, false) + '</select>' +
+        '<button type="button" class="secondary" onclick="confirmSuggestedOwner(' + index + ')">Χρήση πρότασης</button>' +
+        '<button type="button" class="cancel-button" onclick="keepWithoutOwner(' + index + ')">Χωρίς υπεύθυνο</button>' +
       '</div></div>';
   }).join("") +
-  '<div class="actions"><button type="button" id="createAsksButton" onclick="createPreviewAsks()">Δημιουργία asks</button></div>';
+  '<div class="actions"><button type="button" id="createAsksButton" onclick="createPreviewAsks()">' + createButtonLabel() + '</button></div>';
 }
 
 // capturePreviewItems is the source of truth; DOM inputs only mirror it.
 function setPreviewOwner(index, value) {
-  const cleanValue = value || "";
+  const normalized = String(value || "").trim().toLowerCase();
+  const member = projectAssignees.find(function(candidate) { return candidate.email === normalized; });
+  const cleanValue = member ? member.email : "";
   capturePreviewItems[index].owner = cleanValue;
   const input = document.getElementById("capture-owner-" + index);
   if (input) input.value = cleanValue;
 }
 
 function updatePreviewOwnerFromInput(index, value) {
-  capturePreviewItems[index].owner = (value || "").trim();
+  const normalized = String(value || "").trim().toLowerCase();
+  const member = projectAssignees.find(function(candidate) { return candidate.email === normalized; });
+  capturePreviewItems[index].owner = member ? member.email : "";
 }
 
 function confirmSuggestedOwner(index) {
   const suggestion = capturePreviewItems[index].owner_suggestion;
-  setPreviewOwner(index, suggestion ? (suggestion.email || suggestion.display_name) : "");
-}
-
-function confirmEditedOwner(index) {
-  const input = document.getElementById("capture-owner-" + index);
-  if (input) input.focus();
+  setPreviewOwner(index, suggestion ? suggestion.email : "");
 }
 
 function keepWithoutOwner(index) {
@@ -1393,7 +1475,7 @@ async function createPreviewAsks() {
   creatingPreviewAsks = true;
   if (button) {
     button.disabled = true;
-    button.textContent = "Δημιουργία asks...";
+    button.textContent = "Δημιουργία ενεργειών...";
   }
   try {
     const items = capturePreviewItems.map(function(item) {
@@ -1406,23 +1488,23 @@ async function createPreviewAsks() {
     });
     const j = await r.json().catch(function() { return {}; });
     if (!r.ok) {
-      msgEl.textContent = "Δεν ήταν δυνατή η δημιουργία των asks: " + (j.error || "Κάτι πήγε στραβά.");
+      msgEl.textContent = "Δεν ήταν δυνατή η δημιουργία των ενεργειών: " + (j.error || "Κάτι πήγε στραβά.");
       return;
     }
     capturePreviewItems = [];
     capturePreviewBody = "";
     document.getElementById("capturePreview").hidden = true;
     document.getElementById("paste").value = "";
-    msgEl.textContent = "✓ Δημιουργήθηκαν " + j.extracted + " asks";
+    msgEl.textContent = "✓ Δημιουργήθηκαν " + j.extracted + (j.extracted === 1 ? " ενέργεια" : " ενέργειες");
     await load();
     msgEl.scrollIntoView({ block: "center", behavior: "smooth" });
   } catch (e) {
-    msgEl.textContent = "Δεν ήταν δυνατή η δημιουργία των asks: " + (e.message || "network error");
+    msgEl.textContent = "Δεν ήταν δυνατή η δημιουργία των ενεργειών: " + (e.message || "network error");
   } finally {
     creatingPreviewAsks = false;
     if (button) {
       button.disabled = false;
-      button.textContent = "Δημιουργία asks";
+      button.textContent = createButtonLabel();
     }
   }
 }
@@ -1434,18 +1516,18 @@ function showEdit(id) {
   card.innerHTML =
     '<div class="edit-form">' +
       '<div class="edit-grid">' +
-        '<input id="edit-title-' + ask.id + '" value="' + esc(ask.title) + '" placeholder="Τίτλος ask" />' +
-        '<input id="edit-owner-' + ask.id + '" value="' + esc(ask.owner || "") + '" placeholder="Owner" />' +
+        '<input id="edit-title-' + ask.id + '" value="' + esc(ask.title) + '" placeholder="Τίτλος ενέργειας" />' +
+        '<select id="edit-owner-' + ask.id + '" aria-label="Υπεύθυνος">' + ownerOptions(ask.owner || "", true) + '</select>' +
         '<input id="edit-date-' + ask.id + '" type="date" value="' + (ask.due_date || "") + '" />' +
         '<select id="edit-status-' + ask.id + '">' +
-          '<option value="open" ' + (ask.status === "open" ? "selected" : "") + '>Open</option>' +
-          '<option value="accepted" ' + (ask.status === "accepted" ? "selected" : "") + '>Accepted</option>' +
-          '<option value="done" ' + (ask.status === "done" ? "selected" : "") + '>Done</option>' +
+          '<option value="open" ' + (ask.status === "open" ? "selected" : "") + '>Ανοιχτή</option>' +
+          '<option value="accepted" ' + (ask.status === "accepted" ? "selected" : "") + '>Αναλήφθηκε</option>' +
+          '<option value="done" ' + (ask.status === "done" ? "selected" : "") + '>Ολοκληρώθηκε</option>' +
         '</select>' +
       '</div>' +
       '<div class="actions" style="justify-content:flex-start">' +
-        '<button onclick="saveEdit(\'' + ask.id + '\')">Save</button>' +
-        '<button class="cancel-button" onclick="load()">Cancel</button>' +
+        '<button onclick="saveEdit(\'' + ask.id + '\')">Αποθήκευση</button>' +
+        '<button class="cancel-button" onclick="load()">Άκυρο</button>' +
       '</div>' +
     '</div>';
 }
@@ -1477,7 +1559,7 @@ async function saveEdit(id) {
 }
 
 async function deleteAsk(id) {
-  const confirmed = confirm("Θέλεις σίγουρα να διαγράψεις αυτό το ask;");
+  const confirmed = confirm("Θέλεις σίγουρα να διαγράψεις αυτή την ενέργεια;");
   if (!confirmed) return;
 
   const response = await fetch("/api/asks/" + id, {
@@ -1531,7 +1613,7 @@ async function renderMembers(message, messageClass) {
   const members = data.members || [];
   const statusLabel = { sent: "πρόσκληση στάλθηκε", failed: "η πρόσκληση απέτυχε", pending: "σε αναμονή" };
   let html = '<h2>👥 Ομάδα project</h2><p class="helptext">' + esc(currentProjectName()) +
-    ' — τα μέλη βλέπουν όλα τα asks του project και αλλάζουν status. Μπαίνουν με το email τους (κωδικός 6 ψηφίων).</p>' +
+    ' — τα μέλη βλέπουν όλες τις ενέργειες του project και αλλάζουν status. Μπαίνουν με το email τους (κωδικός 6 ψηφίων).</p>' +
     '<ul class="member-list">' +
     (data.owner_email ? '<li><span>' + esc(data.owner_email) + ' <small>· δημιουργός</small></span></li>' : "") +
     members.map(function(member) {
@@ -1777,7 +1859,7 @@ async function loadHomeView() {
     '<p>Καλώς ήρθες' + (currentUser ? ", " + esc(firstNameFromEmail(currentUser)) : "") + ' — μια ματιά σε όλο το project πριν μπεις πιο μέσα.</p></div>';
 
   const enterCards = [
-    ["📋", "Asks", (totals.total || 0) + " εργασίες", (totals.overdue || 0) + " καθυστερημένες", "selectAllAsks()"],
+    ["📋", "Ενέργειες", (totals.total || 0) + " ενέργειες", (totals.overdue || 0) + " εκπρόθεσμες", "selectAllAsks()"],
     ["💡", "Ιδέες ομάδας", (ideasSummary.total || 0) + " ιδέες", underReview + " υπό αξιολόγηση", "selectIdeas()"],
     ["📊", "Dashboard", "Αναλυτικά", "Charts & στατιστικά ανά owner", "selectDashboard()"],
   ].map(function (c) {
@@ -2137,9 +2219,10 @@ document.getElementById("viewSelect").addEventListener("change", function(event)
   load();
 });
 
-document.getElementById("projectSelect").addEventListener("change", function(e) {
+document.getElementById("projectSelect").addEventListener("change", async function(e) {
   currentProject = e.target.value;
   localStorage.setItem("relay_project", currentProject);
+  await loadProjectAssignees();
   updateProjectActions();
   load();
 });

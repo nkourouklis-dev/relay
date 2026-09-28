@@ -24,6 +24,7 @@ Solo PM ή μικρή ομάδα που θέλει accountability tracking χω�
 | Dashboard + charts | ✅ Live | Chart.js: donut status + bar ανά owner |
 | AI Executive Summary | ✅ Live | Με weekly filter option |
 | AI Insights (overdue/blocked/unassigned) | ✅ Live | |
+| Microsoft Copilot Studio (MCP) | 🟡 Κώδικας έτοιμος — εκκρεμούν Entra app registrations, migrations και pilot deploy | User-scoped tools για projects/asks, transcript preview, assignments και authenticated Relay approval. Graph/automatic meeting retrieval δεν περιλαμβάνεται ακόμη. |
 | Excel export | ✅ Live | 4-sheet `.xlsx` μέσω SheetJS |
 | PPT export | ✅ Live | 5-slide `.pptx` μέσω PptxGenJS |
 | Login (magic link, email-based) | ✅ Live | Better Auth + Resend |
@@ -33,19 +34,20 @@ Solo PM ή μικρή ομάδα που θέλει accountability tracking χω�
 | Απομόνωση δεδομένων ανά δημιουργό (server-side) | 🟡 Υλοποιήθηκε — εκκρεμεί deploy | Φάση 1. User βλέπει/αλλάζει μόνο ό,τι δημιούργησε· admin τα πάντα. Αντικαθιστά το παλιό «ownership lock» με email |
 | Overdue auto-detection | ✅ Live | Daily cron 08:00 UTC |
 | Owner = πραγματικός λογαριασμός (όχι free text) | ❌ Δεν έχει γίνει | Phase D του auth plan |
+| Owner picker από project members | 🟡 Υλοποιήθηκε τοπικά — εκκρεμεί deploy | Νέες αναθέσεις ελέγχονται server-side· τα legacy bare names δεν αντιστοιχίζονται αυτόματα. |
 | Claim flow για legacy bare-name owners | ❌ Δεν έχει γίνει | Phase D |
-| Multi-user / shared projects | ❌ Δεν έχει αποφασιστεί | Phase E — **χρειάζεται δική σου απόφαση** |
-| `project_members` table | ❌ Δεν υπάρχει | Εξαρτάται από Phase E |
+| Multi-user / shared projects | ✅ Υλοποιήθηκε | Πρόσβαση ανά project μέσω `relay_project_members` και membership checks. |
+| `relay_project_members` table | ✅ Υλοποιήθηκε | Μέλη προστίθενται από project creator ή admin. |
 
 ---
 
 ## 4. Το πρόβλημα ταυτότητας (identity problem) — γιατί έχει σημασία
 
-Το πεδίο `owner` στα asks είναι **ελεύθερο κείμενο**. Αυτό σημαίνει ότι το ίδιο άτομο μπορεί να εμφανίζεται ως `Κώστας` σε ένα ask και ως `kostas@company.com` σε άλλο — και το dashboard τα μετράει ως δύο διαφορετικούς ανθρώπους. Η λύση (login με email ως ενιαία ταυτότητα) έχει ήδη υλοποιηθεί σε επίπεδο **infrastructure** (Phases A–C), αλλά όχι ακόμα στο **UX** (Phase D — owner picker + claim flow).
+Τα legacy asks κρατούν το παλιό `owner` ως κείμενο, οπότε ένα bare name όπως `Κώστας` δεν έχει ακόμη συνδεθεί με λογαριασμό. Οι νέες αναθέσεις από τις UI φόρμες επιλέγονται πλέον από τα project members και ελέγχονται server-side· η οριστική σύνδεση του `owner_user_id` και το claim flow για legacy names παραμένουν εκκρεμή.
 
 **Τι μένει, συγκεκριμένα:**
-1. Το πεδίο "Owner" στη φόρμα δημιουργίας ask να γίνει επιλογέας γνωστών χρηστών (dropdown by email) αντί για ελεύθερο πεδίο.
-2. Μια απλή οθόνη "claim this ask" ώστε κάποιος που συνδέεται για πρώτη φορά να μπορεί να διεκδικήσει παλιά asks με το όνομά του.
+1. Σύνδεση του επιλεγμένου email με canonical Relay user identity (`owner_user_id`).
+2. Μια απλή οθόνη "claim this ask" ώστε κάποιος να μπορεί να διεκδικήσει παλιά asks με το bare name του.
 
 ---
 

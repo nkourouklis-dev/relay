@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="el">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Έλεγχος προτάσεων | Relay</title>
+  <style>
+    :root{
+      --brand:#243b7a;--brand-strong:#182957;--accent:#08a7c7;
+      --ink:#15213b;--ink-2:#475569;--line:#dbe3ef;--line-strong:#c5d2e3;
+      --bg:#f1f5fb;--surface:#fff;--surface-soft:#eef3f9;
+      --done:#0d6b4c;--done-bg:#e3f6ee;--late:#b42318;--late-bg:#fdecea;--warn:#8a5a0a;--warn-bg:#fff6df;
+      --prop:#5b3fa8;--prop-bg:#f1edfb;
+      --hero:linear-gradient(135deg,#182957 0%,#243b7a 58%,#0b6b86 100%);
+      --shadow:0 2px 10px rgba(21,33,59,.07);--shadow-md:0 10px 28px rgba(21,33,59,.13);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+    button{font:inherit}
+    :focus-visible{outline:2px solid var(--brand-strong);outline-offset:2px}
+    header.bar{display:flex;align-items:center;gap:10px;height:56px;padding:0 max(16px,calc((100vw - 960px)/2));background:var(--brand-strong);color:#fff}
+    header.bar :focus-visible{outline-color:#fff}
+    .mark{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:var(--accent);color:#fff;font-weight:800}
+    header.bar b{font-size:19px;letter-spacing:.02em}
+    header.bar .sp{flex:1}
+    header.bar a{color:#fff;min-height:44px;display:inline-flex;align-items:center;padding:0 4px}
+    main{width:min(960px,100%);margin:0 auto;padding:20px 16px 140px;outline:none}
+    .hero{background:var(--hero);color:#fff;border-radius:16px;padding:20px;margin-bottom:16px}
+    .hero h1{margin:0 0 4px;font-size:22px;line-height:1.3;outline:none}
+    .hero p{margin:0;color:#d3dcf0;font-size:14px}
+    .steps{display:flex;list-style:none;padding:0;margin:0 0 16px;counter-reset:s}
+    .steps li{flex:1;text-align:center;font-size:12px;color:var(--ink-2);position:relative;counter-increment:s;padding-top:34px}
+    .steps li::before{content:counter(s);position:absolute;top:0;left:50%;transform:translateX(-50%);width:28px;height:28px;border-radius:50%;background:#fff;border:2px solid var(--line-strong);display:grid;place-items:center;font-weight:800;font-size:13px;z-index:1}
+    .steps li::after{content:"";position:absolute;top:13px;left:-50%;width:100%;height:2px;background:var(--line-strong)}
+    .steps li:first-child::after{display:none}
+    .steps li.done::before{content:"✓";background:var(--done);border-color:var(--done);color:#fff}
+    .steps li.done::after,.steps li.current::after{background:var(--done)}
+    .steps li.current{color:var(--brand-strong);font-weight:800}
+    .steps li.current::before{background:var(--brand);border-color:var(--brand);color:#fff}
+    .notice{border:1px solid var(--line);border-left:5px solid var(--brand);background:#fff;border-radius:12px;padding:12px 16px;box-shadow:var(--shadow);margin-bottom:12px;overflow-wrap:anywhere}
+    .notice.warn{border-left-color:#b45309;background:var(--warn-bg)}
+    .notice.err{border-left-color:var(--late);background:var(--late-bg)}
+    .notice.ok{border-left-color:var(--done);background:var(--done-bg)}
+    .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--shadow);margin-bottom:12px}
+    .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:0;font-size:14px}
+    .kv dt{color:var(--ink-2)}.kv dd{margin:0;font-weight:650;overflow-wrap:anywhere}
+    .muted{color:var(--ink-2);font-size:14px}
+    a{color:#116b88}
+    ul.list{display:grid;gap:12px;margin:16px 0;padding:0;list-style:none}
+    .prop{border:2px dashed var(--prop);background:var(--prop-bg);border-radius:14px;padding:16px;display:grid;gap:10px;align-content:start}
+    .prop h2{margin:0;font-size:17px}
+    .tag{justify-self:start;background:#fff;color:var(--prop);border:1px solid #cfc3ee;border-radius:999px;padding:1px 10px;font-weight:700;font-size:13px}
+    blockquote{margin:0;padding:10px 12px;border-left:4px solid var(--prop);background:#fff;border-radius:0 8px 8px 0;font-size:15px;white-space:pre-wrap;overflow-wrap:anywhere}
+    .conf{display:inline-block;padding:0 8px;border-radius:6px;font-weight:700;font-size:13px}
+    .conf.hi{background:var(--done-bg);color:var(--done)}.conf.lo{background:var(--warn-bg);color:var(--warn)}
+    .actionbar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line-strong);box-shadow:0 -6px 20px rgba(21,33,59,.1);padding:12px max(16px,calc((100vw - 960px)/2)) calc(12px + env(safe-area-inset-bottom));display:grid;gap:10px}
+    .actionbar[hidden]{display:none}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    .row.end{justify-content:flex-end}
+    .btn{min-height:44px;min-width:44px;padding:0 18px;border-radius:10px;border:1px solid transparent;background:var(--brand);color:#fff;font-weight:650;cursor:pointer}
+    .btn:hover{background:var(--brand-strong)}
+    .btn.secondary{background:#fff;color:var(--brand);border-color:var(--line-strong)}
+    .btn.secondary:hover{background:var(--surface-soft)}
+    .btn.danger{background:#fff;color:var(--late);border-color:#efb6b0}
+    .btn.danger:hover{background:var(--late-bg)}
+    .btn:disabled{opacity:.55;cursor:wait}
+    dialog{border:0;border-radius:16px;padding:0;width:min(480px,calc(100% - 24px));box-shadow:0 16px 40px rgba(21,33,59,.3)}
+    dialog::backdrop{background:rgba(21,33,59,.5)}
+    dialog .in{padding:22px;display:grid;gap:12px}
+    dialog h2{margin:0;font-size:19px}
+    @media (prefers-reduced-motion:no-preference){
+      dialog[open]{animation:pop .18s ease-out}
+      @keyframes pop{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+    }
+    @media (min-width:900px){ul.list{grid-template-columns:1fr 1fr}}
+  </style>
+</head>
+<body>
+  <header class="bar"><div class="mark" aria-hidden="true">R</div><b>Relay</b><span class="sp"></span><a href="/">Άνοιγμα Relay</a></header>
+  <main id="main" tabindex="-1">
+    <div class="hero">
+      <h1 id="title" tabindex="-1">Έλεγχος προτάσεων</h1>
+      <p id="subtitle">Οι προτάσεις δεν είναι ενέργειες μέχρι να εγκριθούν και να δημιουργηθούν.</p>
+    </div>
+    <div id="live" role="status" aria-live="polite"></div>
+    <div id="content"></div>
+  </main>
+  <div id="actionbar" class="actionbar" hidden></div>
+  <dialog id="dlg" aria-labelledby="dlgTitle"><div class="in" id="dlgBody"></div></dialog>
+
+  <script>
+    "use strict";
+    const draftId = new URLSearchParams(location.search).get("draft") || "";
+    const content = document.getElementById("content");
+    const bar = document.getElementById("actionbar");
+    const live = document.getElementById("live");
+    const dlg = document.getElementById("dlg");
+    const dlgBody = document.getElementById("dlgBody");
+    const CONFIDENCE = { high: ["Υψηλή", "hi"], medium: ["Μέτρια", "lo"], low: ["Χαμηλή", "lo"] };
+    let current = null;
+    let timer = null;
+    let busy = false;
+
+    // Όλο το περιεχόμενο που έρχεται από τον server μπαίνει με textContent, ποτέ με innerHTML.
+    function h(tag, attrs, ...children) {
+      const node = document.createElement(tag);
+      for (const [key, value] of Object.entries(attrs || {})) {
+        if (value === false || value == null) continue;
+        if (key === "class") node.className = value;
+        else if (key === "text") node.textContent = value;
+        else if (key.startsWith("on")) node[key] = value;
+        else node.setAttribute(key, value === true ? "" : value);
+      }
+      for (const child of children.flat()) {
+        if (child == null || child === false) continue;
+        node.append(child.nodeType ? child : document.createTextNode(String(child)));
+      }
+      return node;
+    }
+    const button = (text, onClick, cls) => h("button", { type: "button", class: "btn" + (cls ? " " + cls : ""), onclick: onClick, text });
+    const plural = (n) => n === 1 ? "1 πρόταση" : n + " προτάσεις";
+    const genit = (n) => n === 1 ? "1 ενέργειας" : n + " ενεργειών";
+    const time = (iso) => new Date(iso).toLocaleTimeString("el-GR", { hour: "2-digit", minute: "2-digit" });
+    const minutesLeft = (iso) => Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 60000));
+    const minutesText = (n) => n === 1 ? "1 λεπτό" : n + " λεπτά";
+
+    function notice(kind, ...parts) { return h("div", { class: "notice" + (kind ? " " + kind : "") }, ...parts); }
+    function setLive(node) { live.replaceChildren(node); }
+    function clearLive() { live.replaceChildren(); }
+
+    function setSteps(active) {
+      const names = ["Προτάσεις", "Έλεγχος", "Έγκριση", "Δημιουργία"];
+      return h("ol", { class: "steps", "aria-label": "Βήματα" }, names.map((label, i) =>
+        h("li", { class: i + 1 < active ? "done" : i + 1 === active ? "current" : "", "aria-current": i + 1 === active ? "step" : false }, label)
+      ));
+    }
+
+    function openDialog(title, body, actions) {
+      dlgBody.replaceChildren(h("h2", { id: "dlgTitle", text: title }), h("p", { style: "margin:0", text: body }), h("div", { class: "row end" }, actions));
+      dlg.showModal();
+    }
+    const closeDialog = () => dlg.close();
+
+    function sourceCard(d) {
+      const rows = [h("dt", { text: "Project" }), h("dd", { text: d.project_name || "Project" })];
+      if (d.source_title) rows.push(h("dt", { text: "Πηγή" }), h("dd", { text: d.source_title }));
+      let link = null;
+      if (d.source_url) {
+        try {
+          const url = new URL(d.source_url);
+          if (url.protocol === "https:") link = h("a", { href: url.href, target: "_blank", rel: "noopener noreferrer", text: "Άνοιγμα αρχικής πηγής ↗" });
+        } catch (error) { /* άκυρο URL: δεν εμφανίζεται σύνδεσμος */ }
+      }
+      return h("div", { class: "card" },
+        h("dl", { class: "kv" }, rows),
+        link ? h("p", { class: "muted", style: "margin:8px 0 0" }, link) : null,
+        h("p", { class: "muted", style: "margin:8px 0 0", text: "Το πλήρες κείμενο της πηγής δεν αποθηκεύεται από αυτή τη διαδρομή. Κρατούνται μόνο οι προτάσεις, τα αποσπάσματα και ο τίτλος/σύνδεσμος πηγής." })
+      );
+    }
+
+    function proposalCard(item) {
+      const suggestion = item.owner_suggestion;
+      const hasSuggestion = suggestion && (suggestion.display_name || suggestion.email);
+      const conf = hasSuggestion ? (CONFIDENCE[suggestion.confidence_label] || CONFIDENCE.low) : null;
+      const evidence = hasSuggestion && Array.isArray(suggestion.evidence) ? suggestion.evidence.filter(Boolean) : [];
+      return h("li", { class: "prop" },
+        h("span", { class: "tag", text: "Πρόταση · δεν έχει δημιουργηθεί" }),
+        h("h2", { text: item.title }),
+        h("dl", { class: "kv" },
+          h("dt", { text: "Υπεύθυνος" }), h("dd", { text: item.owner || "Χωρίς ανάθεση" }),
+          h("dt", { text: "Προθεσμία" }), h("dd", { text: item.due_date || "Χωρίς προθεσμία" })
+        ),
+        item.quote ? h("blockquote", { text: "«" + item.quote + "»" }) : null,
+        hasSuggestion ? h("div", { class: "muted" },
+          "Πρόταση για υπεύθυνο: " + (suggestion.display_name || suggestion.email) + " · Βεβαιότητα υπεύθυνου: ",
+          h("span", { class: "conf " + conf[1], text: conf[0] }),
+          evidence.length ? h("br") : null,
+          evidence.length ? "Τεκμηρίωση: " + evidence.map((value) => "«" + value + "»").join(" · ") : null
+        ) : null
+      );
+    }
+
+    function stateOf(d, selected) {
+      if (d.status === "committed") return "created";
+      if (d.can_create) return "approved";
+      if (d.approval_expired || d.approved) return "approval-expired";
+      if (d.can_approve) return selected.length ? "await" : "empty";
+      return "expired";
+    }
+
+    function render(d) {
+      current = d;
+      clearInterval(timer);
+      const selected = (d.items || []).filter((item) => item.selected);
+      const unselected = (d.items || []).length - selected.length;
+      const state = stateOf(d, selected);
+      const active = { await: 2, empty: 2, expired: 2, "approval-expired": 3, approved: 3, created: 4 }[state];
+      // parts[1] = banner της κατάστασης (μπαίνει κάτω από το stepper).
+      const parts = [setSteps(active), null, sourceCard(d)];
+      const barRow = h("div", { class: "row" });
+      let barText = "";
+
+      if (state === "await") {
+        parts[1] = h("div", { id: "countdown", class: "notice" });
+        barText = plural(selected.length) + " θα εγκριθούν για το project «" + (d.project_name || "Project") + "». Δεν δημιουργείται καμία ενέργεια σε αυτό το βήμα.";
+        barRow.append(
+          button("Έγκριση " + plural(selected.length), () => confirmApprove(d, selected.length)),
+          button("Ανανέωση", reload, "secondary"),
+          button("Απόρριψη", () => confirmReject(d), "danger")
+        );
+      } else if (state === "approved") {
+        parts[1] = h("div", { id: "countdown", class: "notice ok" });
+        barText = "Δημιουργία " + genit(selected.length) + " στο project «" + (d.project_name || "Project") + "».";
+        barRow.append(button("Δημιουργία ενεργειών", () => confirmCreate(d, selected.length)));
+      } else if (state === "approval-expired") {
+        parts[1] = notice("err", h("b", { text: "Η έγκριση έληξε." }), " Δεν δημιουργήθηκε καμία ενέργεια. Ζήτα από το Copilot νέο preview και ξεκίνα ξανά.");
+      } else if (state === "created") {
+        const n = typeof d.created_count === "number" ? d.created_count : null;
+        parts[1] = notice("ok", h("b", { text: n == null ? "Οι ενέργειες δημιουργήθηκαν" : (n === 1 ? "Δημιουργήθηκε 1 ενέργεια" : "Δημιουργήθηκαν " + n + " ενέργειες") }), " στο project «" + (d.project_name || "Project") + "».");
+        parts.push(h("p", { class: "muted" }, "Οι προτάσεις δεν διατηρούνται μετά τη δημιουργία· οι ενέργειες υπάρχουν πλέον στο Relay. ", h("a", { href: "/", text: "Άνοιγμα Relay" })));
+      } else if (state === "empty") {
+        parts[1] = notice("warn", h("b", { text: "Δεν έχουν επιλεγεί προτάσεις ακόμα." }), " Ζήτα από το Copilot να επιλέξει προτάσεις και πάτα «Ανανέωση».");
+        barRow.append(button("Ανανέωση", reload, "secondary"), button("Απόρριψη", () => confirmReject(d), "danger"));
+      } else {
+        parts[1] = notice("err", h("b", { text: "Έληξε." }), " Οι προτάσεις δεν είναι πια διαθέσιμες για έγκριση. Ζήτα από το Copilot νέο preview.");
+      }
+
+      if (state === "await" || state === "approved") {
+        if (unselected > 0 && state === "await") {
+          parts.push(h("p", { class: "muted", text: unselected === 1 ? "1 ακόμα πρόταση δεν επιλέχθηκε και δεν θα εγκριθεί." : unselected + " ακόμα προτάσεις δεν επιλέχθηκαν και δεν θα εγκριθούν." }));
+        }
+        parts.push(h("ul", { class: "list" }, selected.map(proposalCard)));
+      }
+
+      const copilotNote = state === "await" || state === "empty"
+        ? h("p", { class: "muted", text: "Οι προτάσεις προέκυψαν από το Copilot. Σε αυτή τη σελίδα δεν αλλάζουν. Για αλλαγές πριν την έγκριση, ζήτα τες από το Copilot και πάτα «Ανανέωση»." })
+        : state === "approved"
+          ? h("p", { class: "muted", text: "Μετά την έγκριση οι προτάσεις δεν μπορούν να αλλάξουν ούτε να απορριφθούν. Αν δεν τις δημιουργήσεις εγκαίρως, η έγκριση λήγει." })
+          : null;
+      if (copilotNote) parts.push(copilotNote);
+
+      content.replaceChildren(...parts.filter(Boolean));
+      if (barRow.children.length) {
+        bar.replaceChildren(h("span", { text: barText }), barRow);
+        bar.hidden = false;
+      } else {
+        bar.hidden = true;
+      }
+      if (state === "await" || state === "approved") {
+        updateCountdown(state);
+        timer = setInterval(() => updateCountdown(state), 15000);
+      }
+    }
+
+    function updateCountdown(state) {
+      const node = document.getElementById("countdown");
+      if (!node || !current) return;
+      const iso = state === "await" ? current.expires_at : current.approval_expires_at;
+      if (Date.now() >= Date.parse(iso)) { clearInterval(timer); reload(); return; }
+      const left = minutesLeft(iso);
+      node.replaceChildren(state === "await"
+        ? h("span", {}, "⏱ Λήγει σε ", h("b", { text: minutesText(left) }), " (" + time(iso) + "). Η έγκριση δεν δημιουργεί ενέργειες.")
+        : h("span", {}, h("b", { text: "Εγκρίθηκε." }), " Δεν έχει δημιουργηθεί ακόμα καμία ενέργεια. Μπορεί να δημιουργηθεί για ακόμα ", h("b", { text: minutesText(left) }), " (έως " + time(iso) + ")."));
+    }
+
+    async function api(path, method, body) {
+      const response = await fetch("/api/mcp-capture-drafts/" + encodeURIComponent(draftId) + path, {
+        method,
+        headers: body ? { "content-type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await response.json().catch(() => ({}));
+      return { response, data };
+    }
+
+    function setBusy(value) {
+      busy = value;
+      document.querySelectorAll(".actionbar button, dialog button").forEach((node) => { node.disabled = value; });
+    }
+
+    async function act(path, body, failMessage, onDone) {
+      if (busy) return;
+      setBusy(true);
+      clearLive();
+      try {
+        const { response, data } = await api(path, "POST", body);
+        closeDialog();
+        if (!response.ok) {
+          setLive(notice("err", data.error || failMessage));
+          await reload(true);
+          return;
+        }
+        await onDone(data);
+      } catch (error) {
+        closeDialog();
+        setLive(notice("err", "Δεν ήταν δυνατή η σύνδεση με το Relay. Δοκίμασε ξανά."));
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function confirmApprove(d, n) {
+      openDialog("Έγκριση " + plural(n) + ";",
+        "Θα εγκριθούν οι " + plural(n) + " που βλέπεις για το project «" + (d.project_name || "Project") + "». Δεν θα δημιουργηθεί καμία ενέργεια σε αυτό το βήμα. Μετά την έγκριση δεν μπορούν να αλλάξουν ή να απορριφθούν, και έχεις 30 λεπτά για να τις δημιουργήσεις.",
+        [button("Άκυρο", closeDialog, "secondary"), button("Έγκριση", () => act("", { approve: true }, "Η έγκριση απέτυχε.", () => reload(false, true)))]);
+    }
+    function confirmCreate(d, n) {
+      openDialog("Δημιουργία ενεργειών;",
+        "Θα δημιουργηθούν οι εγκεκριμένες προτάσεις ως ενέργειες στο project «" + (d.project_name || "Project") + "».",
+        [button("Άκυρο", closeDialog, "secondary"), button("Δημιουργία", () => act("/commit", null, "Η δημιουργία απέτυχε.", () => reload(false, true)))]);
+    }
+    function confirmReject(d) {
+      openDialog("Απόρριψη προτάσεων;",
+        "Οι προτάσεις θα διαγραφούν. Καμία ενέργεια δεν έχει δημιουργηθεί και δεν θα δημιουργηθεί. Για νέες προτάσεις, ζήτα από το Copilot νέο preview.",
+        [button("Άκυρο", closeDialog, "secondary"), button("Απόρριψη", () => act("/reject", null, "Η απόρριψη απέτυχε.", showRejected), "danger")]);
+    }
+
+    function showRejected() {
+      clearInterval(timer);
+      current = null;
+      bar.hidden = true;
+      content.replaceChildren(setSteps(2), notice("", h("b", { text: "Οι προτάσεις απορρίφθηκαν και διαγράφηκαν." }), " Δεν δημιουργήθηκε καμία ενέργεια. Για νέες προτάσεις, ζήτα από το Copilot νέο preview."));
+      document.getElementById("title").focus();
+    }
+
+    async function reload(keepMessage, moveFocus) {
+      if (!draftId) {
+        bar.hidden = true;
+        content.replaceChildren(notice("err", "Δεν βρέθηκε το αναγνωριστικό των προτάσεων στον σύνδεσμο."));
+        return;
+      }
+      if (!keepMessage) clearLive();
+      try {
+        const { response, data } = await api("", "GET");
+        if (response.status === 401) {
+          bar.hidden = true;
+          content.replaceChildren(
+            notice("warn", "Συνδέσου στο Relay με τον ίδιο λογαριασμό που δημιούργησε τις προτάσεις."),
+            h("div", { class: "row" },
+              h("a", { class: "btn", href: "/", target: "_blank", rel: "noopener noreferrer", style: "display:inline-grid;place-items:center;text-decoration:none", text: "Άνοιγμα Relay για σύνδεση" }),
+              button("Έλεγχος σύνδεσης", () => reload(), "secondary"))
+          );
+          return;
+        }
+        if (!response.ok) {
+          bar.hidden = true;
+          content.replaceChildren(notice("err", data.error || "Δεν ήταν δυνατή η φόρτωση των προτάσεων."), h("div", { class: "row" }, button("Ξαναδοκίμασε", () => reload(), "secondary")));
+          return;
+        }
+        render(data);
+        if (moveFocus) document.getElementById("title").focus();
+      } catch (error) {
+        bar.hidden = true;
+        content.replaceChildren(notice("err", "Δεν ήταν δυνατή η σύνδεση με το Relay. Δοκίμασε ξανά."), h("div", { class: "row" }, button("Ξαναδοκίμασε", () => reload(), "secondary")));
+      }
+    }
+
+    content.replaceChildren(h("p", { class: "muted", text: "Φόρτωση…" }));
+    reload();
+  </script>
+</body>
+</html>

@@ -73,6 +73,15 @@ CREATE INDEX relay_sessions_userId_idx ON relay_sessions(userId);
 CREATE INDEX relay_accounts_userId_idx ON relay_accounts(userId);
 CREATE INDEX relay_verifications_identifier_idx ON relay_verifications(identifier);
 
+CREATE TABLE relay_entra_identities (
+  tenant_id   TEXT NOT NULL,
+  object_id   TEXT NOT NULL,
+  user_id     TEXT NOT NULL UNIQUE REFERENCES relay_users(id) ON DELETE CASCADE,
+  linked_email TEXT NOT NULL,
+  linked_at   TEXT NOT NULL,
+  PRIMARY KEY (tenant_id, object_id)
+);
+
 -- Browsers επιβεβαιωμένοι με κωδικό email (βλ. migrate_trusted_devices.sql)
 CREATE TABLE relay_trusted_devices (
   id           TEXT PRIMARY KEY,
@@ -163,6 +172,27 @@ CREATE TABLE relay_project_members (
   UNIQUE (project_id, email)
 );
 CREATE INDEX idx_project_members_email ON relay_project_members(email);
+
+CREATE TABLE relay_mcp_capture_drafts (
+  id            TEXT PRIMARY KEY,
+  project_id    TEXT NOT NULL REFERENCES projects(id),
+  actor_user_id TEXT NOT NULL REFERENCES relay_users(id),
+  source_title  TEXT,
+  source_url    TEXT,
+  items_json    TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'committing', 'committed')),
+  created_at    TEXT NOT NULL,
+  expires_at    TEXT NOT NULL,
+  committed_at  TEXT
+);
+CREATE INDEX idx_mcp_capture_drafts_actor ON relay_mcp_capture_drafts(actor_user_id, status);
+CREATE INDEX idx_mcp_capture_drafts_expiry ON relay_mcp_capture_drafts(expires_at);
+
+CREATE TABLE relay_mcp_capture_approvals (
+  draft_id           TEXT PRIMARY KEY REFERENCES relay_mcp_capture_drafts(id),
+  approved_by_user_id TEXT NOT NULL REFERENCES relay_users(id),
+  approved_at        TEXT NOT NULL
+);
 
 -- Εξαρτήσεις και υπενθυμίσεις (βλ. migrate_master_task_import.sql)
 CREATE TABLE relay_ask_dependencies (
