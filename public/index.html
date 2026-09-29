@@ -129,6 +129,11 @@
     .ibox-board-row{display:flex;gap:14px;align-items:flex-start;min-height:120px}
     .ibox-board-col{background:var(--surface-soft);border:1px solid var(--line);border-radius:var(--radius);padding:10px;min-width:250px;max-width:250px;flex:0 0 auto}
     .ibox-board-col-head{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--ink);padding:2px 4px 8px}
+    .ibox-board-col-head[draggable="true"]{cursor:grab}
+    .ibox-board-col-head[draggable="true"] span:nth-child(2){flex:1}
+    .ibox-board-col-handle{color:var(--grey);font-size:12px}
+    .ibox-board-col.dragging{opacity:.4}
+    .ibox-board-col.column-drag-over{box-shadow:0 0 0 2px var(--v) inset;border-radius:var(--radius)}
     .ibox-board-col-count{color:var(--grey);font-weight:600;font-size:11px}
     .ibox-board-col-actions{display:flex;gap:4px;margin:-4px 0 8px}
     .ibox-board-col-actions button{background:transparent;color:var(--grey);box-shadow:none;padding:2px 6px;min-height:28px;font-size:13px}
@@ -2512,6 +2517,7 @@ let boardGroupBy = (function() {
   catch (e) { return "section"; }
 })();
 let draggedAskId = null;
+let draggedColumnId = null;
 
 async function loadBoardView() {
   const view = document.getElementById("boardView");
@@ -2610,9 +2616,13 @@ function boardColumnHtml(columnId, label, key, cards, canManageBoard) {
     headerActions = '<button type="button" class="ibox-board-col-promote" onclick="promoteBoardColumn(' +
       JSON.stringify(key).replace(/'/g, "&#39;") + ')">＋ Αποθήκευση ως στήλη</button>';
   }
+  // Στήλες που μπορούν να αλλάξουν σειρά με drag: μόνο πραγματικές (columnId) και μόνο για όποιον διαχειρίζεται το project.
+  const canReorder = !!columnId && canManageBoard;
   const cardsHtml = cards.length ? cards.map(boardCardHtml).join("") : '<p class="ibox-board-empty">Άδειο</p>';
-  return '<div class="ibox-board-col">' +
-    '<div class="ibox-board-col-head"><span>' + esc(label) + '</span><span class="ibox-board-col-count">' + cards.length + '</span></div>' +
+  return '<div class="ibox-board-col"' + (columnId ? ' data-column-id="' + esc(columnId) + '"' : "") + '>' +
+    '<div class="ibox-board-col-head"' + (canReorder ? ' draggable="true" title="Σύρε για αλλαγή σειράς στηλών"' : "") + '>' +
+      (canReorder ? '<span class="ibox-board-col-handle" aria-hidden="true">⠿</span>' : "") +
+      '<span>' + esc(label) + '</span><span class="ibox-board-col-count">' + cards.length + '</span></div>' +
     headerActions +
     '<div class="ibox-board-col-body" data-column-key="' + esc(key) + '">' + cardsHtml + '</div>' +
   '</div>';
@@ -2640,6 +2650,35 @@ function wireBoardDragEvents() {
       e.dataTransfer.setData("text/plain", draggedAskId);
     });
     card.addEventListener("dragend", function() { card.classList.remove("dragging"); });
+  });
+  // Στήλες: αλλαγή σειράς σέρνοντας από τη λαβή στην κεφαλίδα. Ξεχωριστό mime type (application/x-relay-column)
+  // από αυτό των καρτών (text/plain) ώστε τα δύο drag-and-drop να μη μπερδεύονται μεταξύ τους.
+  document.querySelectorAll("#boardColumns .ibox-board-col[data-column-id]").forEach(function(col) {
+    const columnId = col.dataset.columnId;
+    const head = col.querySelector(".ibox-board-col-head[draggable=\"true\"]");
+    if (head) {
+      head.addEventListener("dragstart", function(e) {
+        draggedColumnId = columnId;
+        col.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("application/x-relay-column", columnId);
+      });
+      head.addEventListener("dragend", function() { col.classList.remove("dragging"); });
+    }
+    col.addEventListener("dragover", function(e) {
+      if (!e.dataTransfer.types.includes("application/x-relay-column")) return;
+      e.preventDefault();
+      col.classList.add("column-drag-over");
+    });
+    col.addEventListener("dragleave", function() { col.classList.remove("column-drag-over"); });
+    col.addEventListener("drop", function(e) {
+      if (!e.dataTransfer.types.includes("application/x-relay-column")) return;
+      e.preventDefault();
+      col.classList.remove("column-drag-over");
+      const draggedId = draggedColumnId || e.dataTransfer.getData("application/x-relay-column");
+      draggedColumnId = null;
+      if (draggedId && draggedId !== columnId) reorderBoardColumns(draggedId, columnId);
+    });
   });
   document.querySelectorAll("#boardColumns .ibox-board-col-body").forEach(function(body) {
     body.addEventListener("dragover", function(e) { e.preventDefault(); body.classList.add("drag-over"); });
@@ -2685,6 +2724,26 @@ async function addBoardColumn() {
     label = pick.trim();
   }
   if (label) await submitBoardColumn(label);
+}
+
+async function reorderBoardColumns(draggedId, targetId) {
+  const ids = Array.from(document.querySelectorAll("#boardColumns .ibox-board-col[data-column-id]"))
+    .map(function(col) { return col.dataset.columnId; })
+    .filter(function(id) { return id !== draggedId; });
+  const targetIndex = ids.indexOf(targetId);
+  ids.splice(targetIndex === -1 ? ids.length : targetIndex, 0, draggedId);
+  try {
+    const response = await fetch("/api/board-columns/reorder", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: currentProject, group_by: boardGroupBy, ids: ids }),
+    });
+    const data = await response.json().catch(function() { return {}; });
+    if (!response.ok) { showToast(data.error || "Δεν έγινε η αλλαγή σειράς."); return; }
+    await refreshBoard();
+  } catch (error) {
+    showToast("Δεν έγινε η αλλαγή σειράς.");
+  }
 }
 
 function promoteBoardColumn(label) {
