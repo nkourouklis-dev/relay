@@ -1968,6 +1968,7 @@ export default {
         path === "/api/dashboard/insights" ||
         path === "/api/capture/preview" ||
         path === "/api/capture/commit" ||
+        path === "/api/mcp-capture-drafts" ||
         path.startsWith("/api/mcp-capture-drafts/") ||
         path === "/api/ideas" ||
         path.startsWith("/api/ideas/") ||
@@ -1979,6 +1980,40 @@ export default {
       }
       const sessionEmail = session?.user?.email || "";
       const actor = session ? getActor(session) : null;
+
+      // --- Προτάσεις: λίστα των δικών μου drafts (Copilot/MCP) για ένα project — Step 7 ---
+      if (path === "/api/mcp-capture-drafts" && request.method === "GET") {
+        const projectId = url.searchParams.get("project_id");
+        const project = await getAccessibleProject(env, actor, projectId);
+        if (!project) return json({ error: "Project not found" }, 404);
+
+        const { results } = await env.DB.prepare(
+          `SELECT d.*, a.approved_at AS approved_at
+           FROM relay_mcp_capture_drafts d
+           LEFT JOIN relay_mcp_capture_approvals a ON a.draft_id = d.id
+           WHERE d.project_id = ? AND d.actor_user_id = ?
+           ORDER BY d.created_at DESC LIMIT 50`
+        ).bind(project.id, actor.id).all();
+
+        const nowIso = new Date().toISOString();
+        const drafts = (results || []).map((draft) => {
+          let itemCount = 0;
+          try { itemCount = JSON.parse(draft.items_json || "[]").length; } catch { itemCount = 0; }
+          return {
+            id: draft.id,
+            source_title: draft.source_title,
+            source_url: draft.source_url,
+            status: draft.status,
+            item_count: itemCount,
+            created_at: draft.created_at,
+            expires_at: draft.expires_at,
+            expired: draft.status === "pending" && !draft.approved_at && draft.expires_at <= nowIso,
+            approved_at: draft.approved_at,
+            committed_at: draft.committed_at,
+          };
+        });
+        return json(drafts);
+      }
 
       // --- Απόρριψη draft: μόνο πριν την έγκριση. Το approval record δεν σβήνεται ποτέ. ---
       const mcpRejectMatch = path.match(/^\/api\/mcp-capture-drafts\/([^/]+)\/reject$/);

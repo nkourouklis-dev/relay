@@ -478,6 +478,7 @@
   <div id="dashboardView" style="display:none"></div>
   <div id="ideasView" style="display:none"></div>
   <div id="boardView" style="display:none"></div>
+  <div id="proposalsView" style="display:none"></div>
   <div id="list"></div>
 
   <div id="createSection">
@@ -1203,6 +1204,7 @@ async function load() {
   const isDashboard = filter === "__dashboard__";
   const isIdeas = filter === "__ideas__";
   const isBoard = filter === "__board__";
+  const isProposals = filter === "__proposals__";
   const isAsks = filter === "__asks__";
   const isTeam = filter === "__team__";
   const isProjects = filter === "__projects__";
@@ -1217,6 +1219,7 @@ async function load() {
   document.getElementById("dashboardView").style.display = isDashboard ? "block" : "none";
   document.getElementById("ideasView").style.display = isIdeas ? "block" : "none";
   document.getElementById("boardView").style.display = isBoard ? "block" : "none";
+  document.getElementById("proposalsView").style.display = isProposals ? "block" : "none";
   document.getElementById("askStatusTabs").style.display = isAsks ? "flex" : "none";
   document.getElementById("tabsLegend").style.display = (isAsks && askStatusFilter === "") ? "block" : "none";
   document.getElementById("list").style.display = isAsks ? "block" : "none";
@@ -1254,6 +1257,11 @@ async function load() {
 
   if (isBoard) {
     await loadBoardView();
+    return;
+  }
+
+  if (isProposals) {
+    await loadProposalsView();
     return;
   }
 
@@ -1884,6 +1892,7 @@ const PROJECT_TABS = [
   ["overview", "Επισκόπηση", "__home__"],
   ["asks", "Ενέργειες", "__asks__"],
   ["board", "Πίνακας", "__board__"],
+  ["proposals", "Προτάσεις", "__proposals__"],
   ["team", "Ομάδα", "__team__"],
   ["ideas", "Ιδέες", "__ideas__"],
   ["dashboard", "Dashboard", "__dashboard__"],
@@ -1967,7 +1976,7 @@ async function applyRoute() {
   closeDrawer();
   // Αλλαγή οθόνης/project: καθάρισε το παλιό περιεχόμενο ώστε να μη φανεί για λίγο ξένο project.
   if (previous.view !== route.view || previous.project !== route.project || previous.tab !== route.tab) {
-    ["list", "homeView", "teamView", "dashboardView", "ideasView", "boardView", "projectsView", "profileView"].forEach(function(id) {
+    ["list", "homeView", "teamView", "dashboardView", "ideasView", "boardView", "proposalsView", "projectsView", "profileView"].forEach(function(id) {
       document.getElementById(id).innerHTML = "";
     });
   }
@@ -2743,6 +2752,60 @@ async function deleteBoardColumn(columnId) {
   } catch (error) {
     showToast("Δεν έγινε η διαγραφή.");
   }
+}
+
+// ---------- Προτάσεις (Step 7): λίστα των Copilot/MCP drafts, read-only — άνοιγμα στη σελίδα έγκρισης ----------
+const PROPOSAL_STATUS_LABELS = { pending: "Εκκρεμεί", committing: "Σε εξέλιξη", committed: "Ολοκληρώθηκε" };
+const PROPOSAL_STATUS_STYLE = {
+  pending: "background:var(--amberbg);color:var(--amber)",
+  committing: "background:var(--amberbg);color:var(--amber)",
+  committed: "background:var(--greenbg);color:var(--green)",
+  expired: "background:var(--surface-soft);color:var(--grey)",
+};
+
+async function loadProposalsView() {
+  const view = document.getElementById("proposalsView");
+  if (!currentProject) {
+    view.innerHTML = "<p style='color:#5a6472'>Δημιούργησε πρώτα ένα project.</p>";
+    return;
+  }
+  view.innerHTML = "<p style='color:#5a6472'>Φόρτωση...</p>";
+  try {
+    const response = await fetch("/api/mcp-capture-drafts?project_id=" + encodeURIComponent(currentProject));
+    const drafts = await response.json().catch(function() { return null; });
+    if (!Array.isArray(drafts)) {
+      view.innerHTML = errorBox((drafts && drafts.error) || "Σφάλμα φόρτωσης προτάσεων.");
+      return;
+    }
+    view.innerHTML = renderProposalsView(drafts);
+  } catch (error) {
+    view.innerHTML = errorBox("Σφάλμα φόρτωσης προτάσεων.");
+  }
+}
+
+function renderProposalsView(drafts) {
+  const head = '<div class="toolbar"><h1 class="view-title" id="proposalsTitle" tabindex="-1" style="margin:0">Προτάσεις</h1></div>' +
+    '<p class="helptext">Προτάσεις που έστειλε το Copilot/MCP για αυτό το project. Κάθε πρόταση ανοίγει στη δική της σελίδα έγκρισης — καμία αλλαγή δεν γίνεται από εδώ.</p>';
+  if (!drafts.length) {
+    return head + '<div class="empty-state">Καμία πρόταση από το Copilot/MCP αυτή τη στιγμή.</div>';
+  }
+  return head + '<div class="ibox-idea-grid">' + drafts.map(renderProposalCard).join("") + '</div>';
+}
+
+function renderProposalCard(draft) {
+  const statusKey = draft.expired ? "expired" : draft.status;
+  const label = draft.expired ? "Έληξε" : (PROPOSAL_STATUS_LABELS[draft.status] || draft.status);
+  const canOpen = !draft.expired && draft.status === "pending";
+  const itemsLabel = draft.item_count === 1 ? "1 πρόταση" : draft.item_count + " προτάσεις";
+  return '<div class="ibox-idea-card">' +
+    '<div class="tag-row"><span class="cat-tag">' + esc(itemsLabel) + '</span>' +
+      '<span class="pill" style="' + (PROPOSAL_STATUS_STYLE[statusKey] || "") + '">' + esc(label) + '</span></div>' +
+    '<h4>' + esc(draft.source_title || "Χωρίς τίτλο") + '</h4>' +
+    '<div class="meta-row"><span>' + esc(timeAgo(draft.created_at)) + '</span>' +
+      (canOpen
+        ? '<a href="/mcp-approval.html?draft=' + esc(draft.id) + '" target="_blank" rel="noopener">Άνοιγμα ↗</a>'
+        : draft.status === "committed" ? "<span>Έγιναν ενέργειες</span>" : "<span>—</span>") +
+    '</div></div>';
 }
 
 // ---------- Gamification (server-side, per real user — see relay_gamification) ----------
