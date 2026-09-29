@@ -299,8 +299,11 @@
   .auth-error{color:var(--red)}
   .auth-success{color:var(--green)}
   .capture-preview{margin-top:18px}
-  .capture-item{background:#fff;border:1px solid var(--line);border-left:4px solid var(--s);border-radius:10px;padding:14px 16px;margin-bottom:10px}
+  .capture-item{background:#fff;border:1px solid var(--line);border-left:4px solid var(--s);border-radius:10px;padding:14px 16px;margin-bottom:10px;transition:opacity .15s ease}
+  .capture-item.is-excluded{opacity:.5}
   .capture-item h4{margin:0 0 6px;font-size:14px}
+  .capture-include{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--v-strong);margin-bottom:8px;cursor:pointer}
+  .capture-include input{width:auto;min-height:auto}
   .capture-quote{color:var(--grey);font-size:12px;font-style:italic;margin:6px 0 10px}
   .owner-suggestion{font-size:13px;line-height:1.5;margin-bottom:8px}
   .owner-evidence{color:var(--grey);font-size:12px;margin:4px 0 10px}
@@ -1492,10 +1495,11 @@ async function ingest() {
       return;
     }
 
-    capturePreviewItems = j.items || [];
+    // Όλες οι προτάσεις ξεκινούν επιλεγμένες (included=true) — ο χρήστης αποεπιλέγει ό,τι δεν θέλει (Step 6).
+    capturePreviewItems = (j.items || []).map(function(item) { return Object.assign({ included: true }, item); });
     capturePreviewBody = body;
     renderCapturePreview();
-    msgEl.textContent = "Βρέθηκαν " + capturePreviewItems.length + " προτάσεις — έλεγξε τον υπεύθυνο πριν τη δημιουργία.";
+    msgEl.textContent = "Βρέθηκαν " + capturePreviewItems.length + " προτάσεις — έλεγξε τον υπεύθυνο και ποιες θα γίνουν ενέργειες.";
   } catch (e) {
     msgEl.textContent = "Η ανάλυση απέτυχε (δίκτυο). Δοκίμασε ξανά.";
   } finally {
@@ -1504,10 +1508,26 @@ async function ingest() {
   }
 }
 
+function includedPreviewItems() {
+  return capturePreviewItems.filter(function(item) { return item.included !== false; });
+}
+
 function createButtonLabel() {
-  const n = capturePreviewItems.length;
+  const n = includedPreviewItems().length;
   const name = currentProjectName();
+  if (!n) return "Επίλεξε τουλάχιστον μία πρόταση";
   return "Δημιουργία " + (n === 1 ? "1 ενέργειας" : n + " ενεργειών") + (name ? " στο " + name : "");
+}
+
+function togglePreviewIncluded(index, checked) {
+  capturePreviewItems[index].included = !!checked;
+  const item = document.querySelector('.capture-item[data-capture-index="' + index + '"]');
+  if (item) item.classList.toggle("is-excluded", !checked);
+  const button = document.getElementById("createAsksButton");
+  if (button) {
+    button.textContent = createButtonLabel();
+    button.disabled = !includedPreviewItems().length;
+  }
 }
 
 function confidenceText(suggestion) {
@@ -1533,7 +1553,10 @@ function renderCapturePreview() {
     const evidence = suggestion && suggestion.evidence && suggestion.evidence.length
       ? "Τεκμηρίωση: " + suggestion.evidence.map(function(value) { return "“" + esc(value) + "”"; }).join(" · ")
       : "Τεκμηρίωση: —";
-    return '<div class="capture-item" data-capture-index="' + index + '">' +
+    return '<div class="capture-item' + (item.included === false ? " is-excluded" : "") + '" data-capture-index="' + index + '">' +
+      '<label class="capture-include"><input type="checkbox" id="capture-include-' + index + '"' +
+        (item.included !== false ? " checked" : "") + ' onchange="togglePreviewIncluded(' + index + ', this.checked)" /> ' +
+        'Δημιουργία ενέργειας από αυτή την πρόταση</label>' +
       '<h4>' + esc(item.title) + '</h4>' +
       '<p class="capture-quote">Απόσπασμα: “' + esc(item.quote || item.title) + '”</p>' +
       '<div class="owner-suggestion"><b>Πρόταση για υπεύθυνο:</b> ' + suggestionText +
@@ -1545,7 +1568,8 @@ function renderCapturePreview() {
         '<button type="button" class="cancel-button" onclick="keepWithoutOwner(' + index + ')">Χωρίς υπεύθυνο</button>' +
       '</div></div>';
   }).join("") +
-  '<div class="actions"><button type="button" id="createAsksButton" onclick="createPreviewAsks()">' + createButtonLabel() + '</button></div>';
+  '<div class="actions"><button type="button" id="createAsksButton" onclick="createPreviewAsks()"' +
+    (includedPreviewItems().length ? "" : " disabled") + '>' + createButtonLabel() + '</button></div>';
 }
 
 // capturePreviewItems is the source of truth; DOM inputs only mirror it.
@@ -1576,7 +1600,8 @@ function keepWithoutOwner(index) {
 let creatingPreviewAsks = false;
 
 async function createPreviewAsks() {
-  if (!capturePreviewItems.length || creatingPreviewAsks) return;
+  const selected = includedPreviewItems();
+  if (!selected.length || creatingPreviewAsks) return;
   const button = document.getElementById("createAsksButton");
   const msgEl = document.getElementById("msg");
   creatingPreviewAsks = true;
@@ -1585,7 +1610,7 @@ async function createPreviewAsks() {
     button.textContent = "Δημιουργία ενεργειών...";
   }
   try {
-    const items = capturePreviewItems.map(function(item) {
+    const items = selected.map(function(item) {
       return Object.assign({}, item, { owner: (item.owner || "").trim() });
     });
     const r = await fetch("/api/capture/commit", {
