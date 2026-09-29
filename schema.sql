@@ -173,6 +173,18 @@ CREATE TABLE relay_project_members (
 );
 CREATE INDEX idx_project_members_email ON relay_project_members(email);
 
+-- Στήλες του Board view (βλ. migrate_add_board_columns.sql) — γενικό, όχι ανά συγκεκριμένο project.
+CREATE TABLE relay_board_columns (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(id),
+  group_by     TEXT NOT NULL CHECK (group_by IN ('section', 'assignee')),
+  column_key   TEXT NOT NULL,
+  label        TEXT NOT NULL,
+  sort_order   INTEGER NOT NULL DEFAULT 0,
+  created_at   TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_board_columns_project ON relay_board_columns(project_id, group_by, sort_order);
+
 CREATE TABLE relay_mcp_capture_drafts (
   id            TEXT PRIMARY KEY,
   project_id    TEXT NOT NULL REFERENCES projects(id),

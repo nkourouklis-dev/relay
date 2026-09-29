@@ -120,6 +120,30 @@
     .ibox-member-card .status-pill{font-size:10px;padding:2px 8px;border-radius:20px;display:inline-block;margin-top:4px}
     .ibox-member-card .status-pill.accepted{background:var(--greenbg);color:var(--green)}
     .ibox-member-card .status-pill.pending{background:var(--amberbg);color:var(--amber)}
+    .ibox-board-toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+    .ibox-board-group-toggle{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
+    .ibox-board-group-toggle button{background:var(--surface);color:var(--grey);box-shadow:none;border-radius:0;border-right:1px solid var(--line)}
+    .ibox-board-group-toggle button:last-child{border-right:0}
+    .ibox-board-group-toggle button.active{background:var(--v-strong);color:#fff}
+    .ibox-board-scroll{overflow-x:auto;padding-bottom:8px}
+    .ibox-board-row{display:flex;gap:14px;align-items:flex-start;min-height:120px}
+    .ibox-board-col{background:var(--surface-soft);border:1px solid var(--line);border-radius:var(--radius);padding:10px;min-width:250px;max-width:250px;flex:0 0 auto}
+    .ibox-board-col-head{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--ink);padding:2px 4px 8px}
+    .ibox-board-col-count{color:var(--grey);font-weight:600;font-size:11px}
+    .ibox-board-col-actions{display:flex;gap:4px;margin:-4px 0 8px}
+    .ibox-board-col-actions button{background:transparent;color:var(--grey);box-shadow:none;padding:2px 6px;min-height:28px;font-size:13px}
+    .ibox-board-col-actions button:hover{background:var(--surface);color:var(--v-strong)}
+    .ibox-board-col-promote{background:transparent;color:var(--v);box-shadow:none;font-size:11px;padding:2px 4px;min-height:auto;margin-bottom:6px}
+    .ibox-board-col-body{display:flex;flex-direction:column;gap:8px;min-height:60px;border-radius:var(--radius-sm);transition:background .12s ease}
+    .ibox-board-col-body.drag-over{background:var(--bluebg)}
+    .ibox-board-empty{color:var(--grey);font-size:12px;text-align:center;padding:14px 0;margin:0}
+    .ibox-board-card{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:var(--radius-sm);padding:10px;box-shadow:var(--shadow-sm);cursor:grab}
+    .ibox-board-card:hover{box-shadow:var(--shadow-md)}
+    .ibox-board-card.dragging{opacity:.4}
+    .ibox-board-card.st-overdue{border-left-color:var(--red)}
+    .ibox-board-card .title{font-size:13px;font-weight:600;color:var(--ink)}
+    .ibox-board-card .chips{margin-top:6px}
+    .ibox-board-card .chip{font-size:11px;padding:2px 7px}
     main{max-width:1000px;margin:0 auto;padding:26px}
     #app.app-shell{max-width:none;margin:0;padding:28px 36px 72px 304px}
     .workspace-content{max-width:1120px;margin:0 auto}
@@ -450,6 +474,7 @@
   <div id="homeView" style="display:none"></div>
   <div id="dashboardView" style="display:none"></div>
   <div id="ideasView" style="display:none"></div>
+  <div id="boardView" style="display:none"></div>
   <div id="list"></div>
 
   <div id="createSection">
@@ -1174,6 +1199,7 @@ async function load() {
   const isHome = filter === "__home__";
   const isDashboard = filter === "__dashboard__";
   const isIdeas = filter === "__ideas__";
+  const isBoard = filter === "__board__";
   const isAsks = filter === "__asks__";
   const isTeam = filter === "__team__";
   const isProjects = filter === "__projects__";
@@ -1187,6 +1213,7 @@ async function load() {
   document.getElementById("homeView").style.display = isHome ? "block" : "none";
   document.getElementById("dashboardView").style.display = isDashboard ? "block" : "none";
   document.getElementById("ideasView").style.display = isIdeas ? "block" : "none";
+  document.getElementById("boardView").style.display = isBoard ? "block" : "none";
   document.getElementById("askStatusTabs").style.display = isAsks ? "flex" : "none";
   document.getElementById("tabsLegend").style.display = (isAsks && askStatusFilter === "") ? "block" : "none";
   document.getElementById("list").style.display = isAsks ? "block" : "none";
@@ -1219,6 +1246,11 @@ async function load() {
 
   if (isIdeas) {
     await loadIdeasView();
+    return;
+  }
+
+  if (isBoard) {
+    await loadBoardView();
     return;
   }
 
@@ -1826,6 +1858,7 @@ function renderImportSummary(s) {
 const PROJECT_TABS = [
   ["overview", "Επισκόπηση", "__home__"],
   ["asks", "Ενέργειες", "__asks__"],
+  ["board", "Πίνακας", "__board__"],
   ["team", "Ομάδα", "__team__"],
   ["ideas", "Ιδέες", "__ideas__"],
   ["dashboard", "Dashboard", "__dashboard__"],
@@ -1909,7 +1942,7 @@ async function applyRoute() {
   closeDrawer();
   // Αλλαγή οθόνης/project: καθάρισε το παλιό περιεχόμενο ώστε να μη φανεί για λίγο ξένο project.
   if (previous.view !== route.view || previous.project !== route.project || previous.tab !== route.tab) {
-    ["list", "homeView", "teamView", "dashboardView", "ideasView", "projectsView", "profileView"].forEach(function(id) {
+    ["list", "homeView", "teamView", "dashboardView", "ideasView", "boardView", "projectsView", "profileView"].forEach(function(id) {
       document.getElementById(id).innerHTML = "";
     });
   }
@@ -2456,6 +2489,235 @@ function showToast(message) {
   el.hidden = false;
   window.clearTimeout(el._hideTimer);
   el._hideTimer = window.setTimeout(function () { el.hidden = true; }, 3000);
+}
+
+// ---------- Board (Step 5): drag-and-drop, γενικό σε κάθε project, ομαδοποίηση ανά φάση/άτομο ----------
+let boardGroupBy = (function() {
+  try { return localStorage.getItem("relay_board_groupby") === "assignee" ? "assignee" : "section"; }
+  catch (e) { return "section"; }
+})();
+let draggedAskId = null;
+
+async function loadBoardView() {
+  const view = document.getElementById("boardView");
+  if (!currentProject) {
+    view.innerHTML = "<p style='color:#5a6472'>Δημιούργησε πρώτα ένα project.</p>";
+    return;
+  }
+  view.innerHTML = boardToolbarHtml() + '<div class="ibox-board-scroll" id="boardColumns"><p style="color:#5a6472">Φόρτωση...</p></div>';
+  await refreshBoard();
+}
+
+function boardToolbarHtml() {
+  return '<div class="ibox-board-toolbar">' +
+    '<div class="ibox-board-group-toggle" role="group" aria-label="Ομαδοποίηση πίνακα">' +
+      '<button type="button" class="' + (boardGroupBy === "section" ? "active" : "") + '" onclick="setBoardGroupBy(\'section\')">Ανά φάση</button>' +
+      '<button type="button" class="' + (boardGroupBy === "assignee" ? "active" : "") + '" onclick="setBoardGroupBy(\'assignee\')">Ανά άτομο</button>' +
+    '</div>' +
+    '<button type="button" onclick="addBoardColumn()">＋ Νέα στήλη</button>' +
+  '</div>';
+}
+
+function setBoardGroupBy(mode) {
+  if (mode === boardGroupBy) return;
+  boardGroupBy = mode;
+  try { localStorage.setItem("relay_board_groupby", mode); } catch (e) {}
+  loadBoardView();
+}
+
+async function refreshBoard() {
+  const host = document.getElementById("boardColumns");
+  if (!host) return;
+  try {
+    const [columnsRes, asksRes] = await Promise.all([
+      fetch("/api/board-columns?project_id=" + encodeURIComponent(currentProject) + "&group_by=" + boardGroupBy),
+      fetch("/api/asks?project_id=" + encodeURIComponent(currentProject)),
+    ]);
+    const columns = await columnsRes.json().catch(function() { return null; });
+    const asks = await asksRes.json().catch(function() { return null; });
+    if (!Array.isArray(columns) || !Array.isArray(asks)) {
+      host.innerHTML = errorBox((columns && columns.error) || (asks && asks.error) || "Σφάλμα φόρτωσης πίνακα.");
+      return;
+    }
+    asks.forEach(function(ask) { asksById[ask.id] = ask; });
+    renderBoardColumns(columns, asks);
+  } catch (error) {
+    host.innerHTML = errorBox("Σφάλμα φόρτωσης πίνακα.");
+  }
+}
+
+function boardCardKey(ask) {
+  return boardGroupBy === "assignee" ? String(ask.owner || "").trim().toLowerCase() : String(ask.section || "").trim();
+}
+
+function boardColumnLabel(column) {
+  if (boardGroupBy !== "assignee") return column.label;
+  const member = projectAssignees.find(function(m) { return m.email === column.column_key; });
+  return member && member.name ? member.name + " · " + member.email : column.label;
+}
+
+function renderBoardColumns(columns, asks) {
+  const host = document.getElementById("boardColumns");
+  const canManageBoard = canManage(projectsById[currentProject]);
+  const byKey = {};
+  asks.forEach(function(ask) {
+    const key = boardCardKey(ask);
+    (byKey[key] = byKey[key] || []).push(ask);
+  });
+  const knownKeys = {};
+  columns.forEach(function(c) { knownKeys[boardGroupBy === "assignee" ? c.column_key.toLowerCase() : c.column_key] = true; });
+  const leftoverKeys = Object.keys(byKey).filter(function(key) { return key && !knownKeys[key]; });
+  const unassignedCards = byKey[""] || [];
+
+  let html = columns.map(function(column) {
+    const key = boardGroupBy === "assignee" ? column.column_key.toLowerCase() : column.column_key;
+    return boardColumnHtml(column.id, boardColumnLabel(column), key, byKey[key] || [], canManageBoard);
+  }).join("");
+
+  leftoverKeys.forEach(function(key) {
+    html += boardColumnHtml("", key, key, byKey[key], canManageBoard);
+  });
+
+  html += boardColumnHtml("", boardGroupBy === "assignee" ? "Χωρίς ανάθεση" : "Χωρίς φάση", "", unassignedCards, false);
+
+  host.innerHTML = '<div class="ibox-board-row">' + html + '</div>';
+  wireBoardDragEvents();
+}
+
+function boardColumnHtml(columnId, label, key, cards, canManageBoard) {
+  let headerActions = "";
+  if (columnId && canManageBoard) {
+    headerActions = '<div class="ibox-board-col-actions">' +
+        '<button type="button" title="Μετονομασία στήλης" onclick="renameBoardColumn(\'' + esc(columnId) + '\')">✎</button>' +
+        '<button type="button" title="Διαγραφή στήλης" onclick="deleteBoardColumn(\'' + esc(columnId) + '\')">🗑</button>' +
+      '</div>';
+  } else if (!columnId && key && canManageBoard) {
+    headerActions = '<button type="button" class="ibox-board-col-promote" onclick="promoteBoardColumn(' +
+      JSON.stringify(key).replace(/'/g, "&#39;") + ')">＋ Αποθήκευση ως στήλη</button>';
+  }
+  const cardsHtml = cards.length ? cards.map(boardCardHtml).join("") : '<p class="ibox-board-empty">Άδειο</p>';
+  return '<div class="ibox-board-col">' +
+    '<div class="ibox-board-col-head"><span>' + esc(label) + '</span><span class="ibox-board-col-count">' + cards.length + '</span></div>' +
+    headerActions +
+    '<div class="ibox-board-col-body" data-column-key="' + esc(key) + '">' + cardsHtml + '</div>' +
+  '</div>';
+}
+
+function boardCardHtml(ask) {
+  const overdue = ask.is_overdue ? " st-overdue" : "";
+  const due = ask.due_date ? esc(ask.due_date) : "—";
+  return '<div class="ibox-board-card' + overdue + '" draggable="true" data-ask-id="' + esc(ask.id) + '" onclick="showEdit(\'' + esc(ask.id) + '\')">' +
+    '<div class="title">' + esc(ask.title) + '</div>' +
+    '<div class="chips">' +
+      '<span class="chip">📅 ' + due + '</span>' +
+      (boardGroupBy === "section" && ask.owner ? '<span class="chip">👤 ' + esc(ask.owner) + '</span>' : "") +
+      (boardGroupBy === "assignee" && ask.section ? '<span class="chip">🗂 ' + esc(ask.section) + '</span>' : "") +
+    '</div>' +
+  '</div>';
+}
+
+function wireBoardDragEvents() {
+  document.querySelectorAll("#boardColumns .ibox-board-card").forEach(function(card) {
+    card.addEventListener("dragstart", function(e) {
+      draggedAskId = card.dataset.askId;
+      card.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", draggedAskId);
+    });
+    card.addEventListener("dragend", function() { card.classList.remove("dragging"); });
+  });
+  document.querySelectorAll("#boardColumns .ibox-board-col-body").forEach(function(body) {
+    body.addEventListener("dragover", function(e) { e.preventDefault(); body.classList.add("drag-over"); });
+    body.addEventListener("dragleave", function() { body.classList.remove("drag-over"); });
+    body.addEventListener("drop", function(e) {
+      e.preventDefault();
+      body.classList.remove("drag-over");
+      const askId = draggedAskId || e.dataTransfer.getData("text/plain");
+      draggedAskId = null;
+      if (askId) moveBoardCard(askId, body.dataset.columnKey || "");
+    });
+  });
+}
+
+async function moveBoardCard(askId, columnKey) {
+  const ask = asksById[askId];
+  if (ask && boardCardKey(ask) === columnKey) return;
+  try {
+    const response = await fetch("/api/asks/" + encodeURIComponent(askId) + "/move", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ group_by: boardGroupBy, column_key: columnKey }),
+    });
+    const data = await response.json().catch(function() { return {}; });
+    if (!response.ok) { showToast(data.error || "Δεν έγινε η μετακίνηση."); return; }
+    await refreshBoard();
+  } catch (error) {
+    showToast("Δεν έγινε η μετακίνηση.");
+  }
+}
+
+async function addBoardColumn() {
+  if (!canManage(projectsById[currentProject])) return;
+  let label = "";
+  if (boardGroupBy === "assignee") {
+    if (!projectAssignees.length) { showToast("Πρόσθεσε πρώτα μέλη στην Ομάδα του project."); return; }
+    const pick = prompt("Email μέλους της ομάδας για νέα στήλη:\n" + projectAssignees.map(function(m) { return m.email; }).join("\n"));
+    if (!pick) return;
+    label = pick.trim();
+  } else {
+    const pick = prompt("Όνομα νέας φάσης/στήλης:");
+    if (!pick) return;
+    label = pick.trim();
+  }
+  if (label) await submitBoardColumn(label);
+}
+
+function promoteBoardColumn(label) {
+  if (canManage(projectsById[currentProject])) submitBoardColumn(label);
+}
+
+async function submitBoardColumn(label) {
+  try {
+    const response = await fetch("/api/board-columns", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project_id: currentProject, group_by: boardGroupBy, label: label }),
+    });
+    const data = await response.json().catch(function() { return {}; });
+    if (!response.ok) { showToast(data.error || "Δεν έγινε η δημιουργία στήλης."); return; }
+    await refreshBoard();
+  } catch (error) {
+    showToast("Δεν έγινε η δημιουργία στήλης.");
+  }
+}
+
+async function renameBoardColumn(columnId) {
+  const label = prompt("Νέος τίτλος στήλης:");
+  if (!label || !label.trim()) return;
+  try {
+    const response = await fetch("/api/board-columns/" + encodeURIComponent(columnId), {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ label: label.trim() }),
+    });
+    const data = await response.json().catch(function() { return {}; });
+    if (!response.ok) { showToast(data.error || "Δεν έγινε η μετονομασία."); return; }
+    await refreshBoard();
+  } catch (error) {
+    showToast("Δεν έγινε η μετονομασία.");
+  }
+}
+
+async function deleteBoardColumn(columnId) {
+  if (!confirm("Διαγραφή στήλης; Οι κάρτες παραμένουν όπως είναι, απλά δεν θα έχουν πια δική τους στήλη.")) return;
+  try {
+    const response = await fetch("/api/board-columns/" + encodeURIComponent(columnId), { method: "DELETE" });
+    const data = await response.json().catch(function() { return {}; });
+    if (!response.ok) { showToast(data.error || "Δεν έγινε η διαγραφή."); return; }
+    await refreshBoard();
+  } catch (error) {
+    showToast("Δεν έγινε η διαγραφή.");
+  }
 }
 
 // ---------- Gamification (server-side, per real user — see relay_gamification) ----------

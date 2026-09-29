@@ -415,6 +415,59 @@ async function resolveProjectAssignee(env, project, value, previousOwner = "") {
   return member ? email : null;
 }
 
+// ---------- Board (Step 5): στήλες drag-and-drop ανά project, ομαδοποίηση section/assignee ----------
+// Γενικό, όχι ανά συγκεκριμένο project· ο κάθε project owner/admin διαχειρίζεται τις δικές του στήλες.
+const BOARD_GROUP_BYS = ["section", "assignee"];
+
+// Πρώτη φορά που ανοίγει το board για ένα project+group_by: seed στηλών ώστε να μη ξεκινά άδειο.
+// Μετά τον seed, οι στήλες ζουν ανεξάρτητα (μπορούν να μετονομαστούν/διαγραφούν).
+// - section: seed από τις διακριτές τιμές section που ήδη υπάρχουν στα asks (ελεύθερο κείμενο, ήδη «δικό» του project).
+// - assignee: seed ΜΟΝΟ από πραγματικά μέλη του project (owner/project members), ποτέ από ελεύθερο κείμενο
+//   του legacy asks.owner (π.χ. ονόματα ομάδων από το Master Task import) — να μη γίνει ποτέ αυτόματη
+//   αντιστοίχιση ασαφούς ονόματος σε λογαριασμό, αυτό μένει ρητή, χειροκίνητη ενέργεια (βλ. AGENTS.md).
+async function seedBoardColumns(env, project, groupBy) {
+  let order = 0;
+  if (groupBy === "assignee") {
+    const emails = new Set();
+    if (project.created_by_user_id) {
+      const owner = await env.DB.prepare("SELECT email FROM relay_users WHERE id = ?")
+        .bind(project.created_by_user_id).first();
+      if (owner?.email) emails.add(String(owner.email).toLowerCase());
+    }
+    const { results } = await env.DB.prepare(
+      "SELECT email FROM relay_project_members WHERE project_id = ? ORDER BY invited_at"
+    ).bind(project.id).all();
+    (results || []).forEach((r) => emails.add(String(r.email).toLowerCase()));
+    for (const email of emails) {
+      await env.DB.prepare(
+        `INSERT INTO relay_board_columns (id, project_id, group_by, column_key, label, sort_order) VALUES (?, ?, 'assignee', ?, ?, ?)`
+      ).bind(uid(), project.id, email, email, order++).run();
+    }
+    return;
+  }
+  const { results } = await env.DB.prepare(
+    "SELECT DISTINCT section AS value FROM asks WHERE project_id = ? AND section IS NOT NULL AND TRIM(section) != '' ORDER BY section"
+  ).bind(project.id).all();
+  const values = (results || []).map((r) => String(r.value).trim()).filter(Boolean);
+  for (const value of values) {
+    await env.DB.prepare(
+      `INSERT INTO relay_board_columns (id, project_id, group_by, column_key, label, sort_order) VALUES (?, ?, 'section', ?, ?, ?)`
+    ).bind(uid(), project.id, value, value, order++).run();
+  }
+}
+
+async function getBoardColumns(env, project, groupBy) {
+  const select = () => env.DB.prepare(
+    "SELECT * FROM relay_board_columns WHERE project_id = ? AND group_by = ? ORDER BY sort_order, created_at"
+  ).bind(project.id, groupBy).all();
+  let { results } = await select();
+  if (!results || !results.length) {
+    await seedBoardColumns(env, project, groupBy);
+    ({ results } = await select());
+  }
+  return results || [];
+}
+
 // Για queries στα asks χωρίς συγκεκριμένο project.
 function askScope(actor) {
   return isAdmin(actor)
@@ -1908,6 +1961,8 @@ export default {
         path.startsWith("/api/projects/") ||
         path === "/api/asks" ||
         path.startsWith("/api/asks/") ||
+        path === "/api/board-columns" ||
+        path.startsWith("/api/board-columns/") ||
         path === "/api/dashboard" ||
         path === "/api/dashboard/summary" ||
         path === "/api/dashboard/insights" ||
@@ -2373,6 +2428,122 @@ export default {
         ]);
 
         return json({ ok: true, id: askId });
+      }
+
+      // --- Board: μετακίνηση ενέργειας σε άλλη στήλη (drag & drop) ---
+      if (path.match(/^\/api\/asks\/[^/]+\/move$/) && request.method === "POST") {
+        const askId = path.split("/")[3];
+        const b = await request.json().catch(() => ({}));
+        if (!BOARD_GROUP_BYS.includes(b.group_by)) return json({ error: "Μη έγκυρο group_by" }, 400);
+
+        const access = await getAskAccess(env, actor, askId);
+        if (!access.canView) return json({ error: "Το ask δεν βρέθηκε" }, 404);
+        if (!access.canManage) {
+          return json({ error: "Μετακίνηση μόνο από τον δημιουργό του ask, τον δημιουργό του project ή admin." }, 403);
+        }
+
+        const columnKey = String(b.column_key || "").trim();
+        if (b.group_by === "section") {
+          await env.DB.prepare("UPDATE asks SET section = ? WHERE id = ?").bind(columnKey, askId).run();
+        } else {
+          const project = await getProjectById(env, access.ask.project_id);
+          const resolvedOwner = await resolveProjectAssignee(env, project, columnKey, access.ask.owner);
+          if (resolvedOwner === null) return json({ error: "Ο owner πρέπει να είναι μέλος του project." }, 400);
+          await env.DB.prepare("UPDATE asks SET owner = ? WHERE id = ?").bind(resolvedOwner, askId).run();
+        }
+        await env.DB.prepare(
+          "INSERT INTO events (id, ask_id, type, note) VALUES (?, ?, 'updated', 'Moved on board')"
+        ).bind(uid(), askId).run();
+        return json({ ok: true });
+      }
+
+      // --- Board: στήλες ενός project για συγκεκριμένο group_by (section/assignee) ---
+      if (path === "/api/board-columns" && request.method === "GET") {
+        const projectId = url.searchParams.get("project_id");
+        const groupBy = url.searchParams.get("group_by");
+        if (!BOARD_GROUP_BYS.includes(groupBy)) return json({ error: "Μη έγκυρο group_by" }, 400);
+        const project = await getAccessibleProject(env, actor, projectId);
+        if (!project) return json({ error: "Project not found" }, 404);
+        return json(await getBoardColumns(env, project, groupBy));
+      }
+
+      // --- Board: νέα στήλη ---
+      if (path === "/api/board-columns" && request.method === "POST") {
+        const b = await request.json().catch(() => ({}));
+        if (!BOARD_GROUP_BYS.includes(b.group_by)) return json({ error: "Μη έγκυρο group_by" }, 400);
+        const label = String(b.label || "").trim();
+        if (!label) return json({ error: "Ο τίτλος στήλης είναι υποχρεωτικός" }, 400);
+
+        const project = await getAccessibleProject(env, actor, b.project_id);
+        if (!project) return json({ error: "Project not found" }, 404);
+        if (!canManageProject(actor, project)) {
+          return json({ error: "Μόνο ο δημιουργός του project ή admin μπορεί να διαχειριστεί τις στήλες." }, 403);
+        }
+
+        let columnKey = label;
+        if (b.group_by === "assignee") {
+          const resolved = await resolveProjectAssignee(env, project, label);
+          if (resolved === null) return json({ error: "Ο assignee πρέπει να είναι μέλος του project." }, 400);
+          columnKey = resolved;
+        }
+
+        const { results } = await env.DB.prepare(
+          "SELECT COALESCE(MAX(sort_order), -1) AS m FROM relay_board_columns WHERE project_id = ? AND group_by = ?"
+        ).bind(project.id, b.group_by).all();
+        const nextOrder = (results?.[0]?.m ?? -1) + 1;
+        const id = uid();
+        await env.DB.prepare(
+          `INSERT INTO relay_board_columns (id, project_id, group_by, column_key, label, sort_order) VALUES (?, ?, ?, ?, ?, ?)`
+        ).bind(id, project.id, b.group_by, columnKey, label, nextOrder).run();
+        return json({ id, ok: true });
+      }
+
+      // --- Board: αναδιάταξη στηλών μαζί (drag reorder των ίδιων των στηλών) ---
+      if (path === "/api/board-columns/reorder" && request.method === "POST") {
+        const b = await request.json().catch(() => ({}));
+        if (!BOARD_GROUP_BYS.includes(b.group_by)) return json({ error: "Μη έγκυρο group_by" }, 400);
+        const project = await getAccessibleProject(env, actor, b.project_id);
+        if (!project) return json({ error: "Project not found" }, 404);
+        if (!canManageProject(actor, project)) {
+          return json({ error: "Μόνο ο δημιουργός του project ή admin μπορεί να διαχειριστεί τις στήλες." }, 403);
+        }
+        const ids = Array.isArray(b.ids) ? b.ids : [];
+        await env.DB.batch(ids.map((id, index) =>
+          env.DB.prepare("UPDATE relay_board_columns SET sort_order = ? WHERE id = ? AND project_id = ? AND group_by = ?")
+            .bind(index, id, project.id, b.group_by)
+        ));
+        return json({ ok: true });
+      }
+
+      // --- Board: μετονομασία στήλης ---
+      if (path.match(/^\/api\/board-columns\/[^/]+$/) && request.method === "PUT") {
+        const columnId = path.split("/")[3];
+        const b = await request.json().catch(() => ({}));
+        const label = String(b.label || "").trim();
+        if (!label) return json({ error: "Ο τίτλος στήλης είναι υποχρεωτικός" }, 400);
+
+        const column = await env.DB.prepare("SELECT * FROM relay_board_columns WHERE id = ?").bind(columnId).first();
+        if (!column) return json({ error: "Η στήλη δεν βρέθηκε" }, 404);
+        const project = await getProjectById(env, column.project_id);
+        if (!canManageProject(actor, project)) {
+          return json({ error: "Μόνο ο δημιουργός του project ή admin μπορεί να διαχειριστεί τις στήλες." }, 403);
+        }
+
+        await env.DB.prepare("UPDATE relay_board_columns SET label = ? WHERE id = ?").bind(label, columnId).run();
+        return json({ ok: true });
+      }
+
+      // --- Board: διαγραφή στήλης (τα asks μένουν ως έχουν, απλά δεν έχουν πια δική τους στήλη) ---
+      if (path.match(/^\/api\/board-columns\/[^/]+$/) && request.method === "DELETE") {
+        const columnId = path.split("/")[3];
+        const column = await env.DB.prepare("SELECT * FROM relay_board_columns WHERE id = ?").bind(columnId).first();
+        if (!column) return json({ error: "Η στήλη δεν βρέθηκε" }, 404);
+        const project = await getProjectById(env, column.project_id);
+        if (!canManageProject(actor, project)) {
+          return json({ error: "Μόνο ο δημιουργός του project ή admin μπορεί να διαχειριστεί τις στήλες." }, 403);
+        }
+        await env.DB.prepare("DELETE FROM relay_board_columns WHERE id = ?").bind(columnId).run();
+        return json({ ok: true });
       }
 
       // --- Ideas: λίστα (scoped στο project/team, όχι δημόσιο) ---
