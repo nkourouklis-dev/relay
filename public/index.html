@@ -65,7 +65,7 @@
     header span.tagline{color:var(--grey);font-size:13px}
     header .spacer{flex:1}
     #whoami{font-size:13px;color:var(--grey);cursor:pointer;text-decoration:underline dotted}
-    .ibox-xp-widget{display:flex;flex-direction:column;gap:3px;padding:6px 14px;border-radius:10px;background:var(--surface-soft);border:1px solid var(--line);min-width:150px;margin-right:8px}
+    .ibox-xp-widget{display:inline-flex;flex-direction:column;gap:3px;padding:8px 16px;border-radius:10px;background:var(--surface-soft);border:1px solid var(--line);min-width:190px;margin-bottom:16px}
     .ibox-xp-widget:empty{display:none;margin:0;padding:0;border:0}
     .ibox-xp-widget .xp-top{display:flex;justify-content:space-between;gap:10px;font-size:11px;font-weight:700;color:var(--v-strong);white-space:nowrap}
     .ibox-xp-widget .xp-badges{font-size:11px}
@@ -372,7 +372,7 @@
   .toolbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
   /* Κινητό: η κεφαλίδα δεν χωράει XP + email + αποσύνδεση (ξεπερνούσε το πλάτος οθόνης). Email/αποσύνδεση: Προφίλ και μενού. */
   @media (max-width:1100px){header span.tagline,#whoami{display:none}}
-  @media (max-width:720px){#gamiBadge,#whoami,#logoutButton{display:none !important}}
+  @media (max-width:720px){#whoami,#logoutButton{display:none !important}}
   @media (min-width:640px){.tile-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.project-card-grid{grid-template-columns:repeat(2,1fr)}}
   @media (min-width:1024px){.overview-cols{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px;align-items:start}.overview-cols aside{order:0}}
   @media (prefers-reduced-motion:reduce){
@@ -392,7 +392,6 @@
   <button id="mobileMenuButton" class="mobile-menu" type="button" aria-label="Άνοιγμα μενού" aria-controls="appSidebar" aria-expanded="false">☰</button>
   <b>Relay</b><img class="header-kafkas" src="/brand/kafkas-logo.png" alt="ΚΑΥΚΑΣ" width="150" height="20" /><span class="tagline">Από τις συζητήσεις σε ενέργειες</span>
   <div class="spacer"></div>
-  <div id="gamiBadge" class="ibox-xp-widget"></div>
   <span id="whoami"></span>
   <button id="logoutButton" class="secondary" type="button" style="display:none">Αποσύνδεση</button>
 </header>
@@ -2275,13 +2274,11 @@ const IDEA_STATUSES_CLIENT = [
 let lastIdeas = [];
 let ideaSubView = "home";
 
+// Step 8: Ψηφοφορία/Κατάταξη/Δώρα αφαιρέθηκαν — ήταν "🚧 έρχεται σύντομα" χωρίς backend, όχι πραγματικές οθόνες.
 const IBOX_SUBNAV = [
   ["home", "🏠", "Αρχική"],
   ["submit", "➕", "Υποβολή Ιδέας"],
   ["mine", "💡", "Οι Ιδέες μου"],
-  ["voting", "🗳", "Ψηφοφορία"],
-  ["leaderboard", "🏆", "Πίνακας Κατάταξης"],
-  ["rewards", "🎁", "Κατάλογος Δώρων"],
 ];
 
 function setIdeaSubView(view) {
@@ -2294,12 +2291,6 @@ function renderSubnav() {
     return '<button type="button" class="' + (ideaSubView === t[0] ? "active" : "") + '" onclick="setIdeaSubView(\'' + t[0] + '\')">' +
       t[1] + ' ' + esc(t[2]) + '</button>';
   }).join("") + '</div>';
-}
-
-function renderComingSoon(icon, title, description) {
-  return '<div class="ibox-placeholder"><div class="icon">' + icon + '</div><strong>' + esc(title) + '</strong>' +
-    '<p style="margin:0;font-size:13px;max-width:420px;margin:0 auto">' + esc(description) + '</p>' +
-    '<p style="margin:14px 0 0;font-size:11px;color:var(--muted)">🚧 Έρχεται σύντομα — δεν υπάρχει ακόμα backend για αυτό.</p></div>';
 }
 
 function firstNameFromEmail(email) {
@@ -2321,24 +2312,12 @@ function timeAgo(sqliteTimestamp) {
   return Math.round(hours / 24) + "η πριν";
 }
 
-const IBOX_PLACEHOLDER_COPY = {
-  voting: ["🗳", "Ψηφοφορία", "Οι συνάδελφοι θα μπορούν να ψηφίζουν τις ιδέες που τους αρέσουν περισσότερο, ώστε η ομάδα αξιολόγησης να βλέπει τι έχει πραγματική υποστήριξη."],
-  leaderboard: ["🏆", "Πίνακας Κατάταξης", "Κατάταξη συναδέλφων με βάση XP και εγκεκριμένες ιδέες — χτίζεται πάνω στο ίδιο relay_gamification που ήδη τρέχει."],
-  rewards: ["🎁", "Κατάλογος Δώρων", "Εξαργύρωση συσσωρευμένου XP για μικρά βραβεία/δώρα — χρειάζεται δικό του catalog πριν φτιαχτεί."],
-};
-
 async function loadIdeasView() {
   const view = document.getElementById("ideasView");
   const nav = renderSubnav();
 
   if (!currentProject) {
     view.innerHTML = nav + "<p style='color:#5a6472'>Δημιούργησε πρώτα ένα project.</p>";
-    return;
-  }
-
-  if (IBOX_PLACEHOLDER_COPY[ideaSubView]) {
-    const c = IBOX_PLACEHOLDER_COPY[ideaSubView];
-    view.innerHTML = nav + renderComingSoon(c[0], c[1], c[2]);
     return;
   }
 
@@ -2379,6 +2358,9 @@ async function loadIdeasView() {
     '<div class="ibox-banner"><h2>Καλώς ήρθες' + (currentUser ? ", " + esc(firstNameFromEmail(currentUser)) : "") + '</h2>' +
     '<p>Ιδέες της ομάδας σου σε αυτό το project — τι κινείται σήμερα.</p></div>';
 
+  // Step 8: το XP widget ζει πλέον εδώ (Ideas overview), όχι στο global header.
+  const gamiBadge = '<div id="gamiBadge" class="ibox-xp-widget"></div>';
+
   const ticker = (Array.isArray(activity) && activity.length)
     ? '<div class="ibox-ticker"><span class="dot"></span>' + esc(renderTickerText(activity[0])) + '</div>'
     : "";
@@ -2386,8 +2368,6 @@ async function loadIdeasView() {
   const quickCards = [
     ["➕", "Υποβολή Ιδέας", "Μοιράσου μια νέα πρόταση", "setIdeaSubView('submit')"],
     ["💡", "Οι ιδέες μου", "Ενεργές & αρχειοθετημένες", "setIdeaSubView('mine')"],
-    ["🗳", "Ψηφοφορία", "Ψήφισε ιδέες", "setIdeaSubView('voting')"],
-    ["🎁", "Κατάλογος Δώρων", "Εξαργύρωση πόντων", "setIdeaSubView('rewards')"],
   ].map(function (c) {
     return '<button type="button" class="ibox-quick-card" onclick="' + c[3] + '">' +
       '<span class="icon">' + c[0] + '</span><strong>' + esc(c[1]) + '</strong><small>' + esc(c[2]) + '</small></button>';
@@ -2417,10 +2397,11 @@ async function loadIdeasView() {
     : "<p style='color:#5a6472'>Δεν υπάρχουν ακόμα ιδέες σε αυτό το project.</p>";
 
   view.innerHTML =
-    nav + banner + ticker +
+    nav + banner + gamiBadge + ticker +
     '<div class="ibox-quick-grid">' + quickCards + '</div>' +
     '<div class="ibox-stats-grid">' + statCards + '</div>' +
     '<h3 style="margin-top:22px">Πρόσφατες ιδέες</h3>' + grid;
+  loadGamificationBadge();
 }
 
 function renderIdeaFormHtml() {
