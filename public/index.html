@@ -501,6 +501,7 @@
   <div class="ibox-subnav" id="askStatusTabs" style="display:none">
     <button data-sf="" class="active">Όλα</button>
     <button data-sf="overdue">Εκπρόθεσμες</button>
+    <button data-sf="unassigned">Χωρίς υπεύθυνο</button>
     <button data-sf="accepted">Αναλήφθηκαν</button>
     <button data-sf="done">Ολοκληρωμένα</button>
   </div>
@@ -1361,7 +1362,9 @@ let lastAllAsks = [];
 
 function askMatchesStatusFilter(ask) {
   if (!askStatusFilter) return true;
-  return askStatusFilter === "overdue" ? !!ask.is_overdue : ask.status === askStatusFilter;
+  if (askStatusFilter === "overdue") return !!ask.is_overdue;
+  if (askStatusFilter === "unassigned") return ask.status !== "done" && !String(ask.owner || "").trim();
+  return ask.status === askStatusFilter;
 }
 
 // Render από τα ήδη φορτωμένα δεδομένα (χωρίς δίκτυο) — χρησιμοποιείται και μετά από κάθε γρήγορη αλλαγή.
@@ -2408,7 +2411,7 @@ async function loadHomeView() {
 
   const rows = [];
   if (late) rows.push('<li><button type="button" class="attn-row attn-late" onclick="goAsks(\'overdue\')"><span class="t">Εκπρόθεσμες ενέργειες</span><span class="c">' + late + '</span><span aria-hidden="true">›</span></button></li>');
-  if (unassigned) rows.push('<li><div class="attn-row attn-none"><span class="t">Ενέργειες χωρίς υπεύθυνο</span><span class="c">' + unassigned + '</span></div></li>');
+  if (unassigned) rows.push('<li><button type="button" class="attn-row attn-none" onclick="goAsks(\'unassigned\')"><span class="t">Ενέργειες χωρίς υπεύθυνο</span><span class="c">' + unassigned + '</span><span aria-hidden="true">›</span></button></li>');
   const attention = rows.length
     ? '<ul class="attn-list">' + rows.join("") + '</ul>'
     : '<div class="empty-state">Τίποτα εκκρεμές ✓</div>';
