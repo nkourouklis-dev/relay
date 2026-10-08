@@ -139,7 +139,7 @@
     .ibox-board-col-actions button{background:transparent;color:var(--grey);box-shadow:none;padding:2px 6px;min-height:28px;font-size:13px}
     .ibox-board-col-actions button:hover{background:var(--surface);color:var(--v-strong)}
     .ibox-board-col-promote{background:transparent;color:var(--v);box-shadow:none;font-size:11px;padding:2px 4px;min-height:auto;margin-bottom:6px}
-    .ibox-board-col-body{display:flex;flex-direction:column;gap:8px;min-height:60px;border-radius:var(--radius-sm);transition:background .12s ease}
+    .ibox-board-col-body{max-height:calc(100vh - 330px);overflow-y:auto;padding-right:2px;display:flex;flex-direction:column;gap:8px;min-height:60px;border-radius:var(--radius-sm);transition:background .12s ease}
     .ibox-board-col-body.drag-over{background:var(--bluebg)}
     .ibox-board-empty{color:var(--grey);font-size:12px;text-align:center;padding:14px 0;margin:0}
     .ibox-board-card{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:var(--radius-sm);padding:10px;box-shadow:var(--shadow-sm);cursor:grab}
@@ -198,7 +198,21 @@
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
   .chip{font-size:12px;color:var(--grey);background:#f5f4fb;border-radius:8px;padding:3px 9px;white-space:nowrap}
   .sp-chip{color:var(--v-strong);background:var(--bluebg)}
+  .boot-splash{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:var(--bg);color:var(--v)}
+  .boot-splash b{font-size:28px;letter-spacing:.5px}.boot-splash span{font-size:13px;color:var(--grey)}
+  .boot-splash[hidden]{display:none}
   .member-actions{display:inline-flex;gap:6px;flex-wrap:wrap}
+  .avatar{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--v);color:#fff;font-size:10px;font-weight:700;margin-right:5px;vertical-align:middle}
+  .chip-owner{display:inline-flex;align-items:center}
+  .chip-owner.is-mine{background:var(--bluebg);color:var(--v-strong)}
+  .chip-unassigned{background:var(--amberbg);color:var(--amber)}
+  .ask-actions{display:flex;flex-direction:column;gap:8px;align-items:stretch;margin-top:10px;min-width:170px}
+  .ask-actions select,.ask-actions button{width:100%;min-height:40px}
+  .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+  .detail-field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--grey);font-weight:600}
+  .detail-field input,.detail-field select{width:100%;min-width:0;font-weight:400;min-height:40px}
+  .detail-wide{grid-column:1/-1}
+  @media (max-width:720px){.detail-grid{grid-template-columns:1fr}.ask-actions{flex-direction:row;flex-wrap:wrap;min-width:0}.ask-actions select{flex:1 1 100%}.ask-actions button{flex:1 1 40%}.modal-shell{align-items:end;padding:0}.modal-card{border-radius:var(--radius) var(--radius) 0 0;max-height:92vh}}
   .ibox-board-sprint{max-width:220px;min-height:36px}
   .sprint-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px;box-shadow:var(--shadow-sm)}
   .sprint-card.sprint-active{border-left:4px solid var(--v)}
@@ -447,6 +461,7 @@
   <div class="sidebar-profile"><div class="profile-avatar">◉</div><div><strong>Workspace member</strong><small>Signed in</small></div></div>
 </aside>
 <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
+<div id="bootSplash" class="boot-splash" role="status" aria-live="polite"><b>Relay</b><span>Φόρτωση…</span></div>
 <main id="authView" class="auth-view" hidden>
   <img class="auth-brand" src="/brand/kafkas-logo.png" alt="ΚΑΥΚΑΣ" width="224" height="30" />
   <h1>Σύνδεση στο Relay</h1>
@@ -592,7 +607,13 @@ function renderWhoAmI() {
   document.getElementById("logoutButton").style.display = currentUser ? "block" : "none";
 }
 
+function hideBootSplash() {
+  const splash = document.getElementById("bootSplash");
+  if (splash) splash.hidden = true;
+}
+
 function showLogin(message, className) {
+  hideBootSplash();
   currentUser = "";
   currentUserId = "";
   currentRole = "user";
@@ -649,10 +670,13 @@ function showApp(session) {
   currentRole = session.user.role === "admin" ? "admin" : "user";
   document.body.classList.remove("logged-out");
   document.getElementById("authView").hidden = true;
-  document.getElementById("app").hidden = false;
   renderWhoAmI();
   loadGamificationBadge();
-  loadProjects().then(startRouting);
+  // Το #app εμφανίζεται μόνο όταν έχουν φορτώσει projects και πρώτη οθόνη — όχι το στατικό layout.
+  loadProjects().then(startRouting).catch(function() {}).then(function() {
+    document.getElementById("app").hidden = false;
+    hideBootSplash();
+  });
 }
 
 async function checkSession() {
@@ -1301,7 +1325,6 @@ async function load() {
   }
 
   if (isBoard) {
-    await refreshSprints();
     await loadBoardView();
     return;
   }
@@ -1312,18 +1335,16 @@ async function load() {
   }
 
   if (!isAsks) return;
-  await refreshSprints();
 
   if (!currentProject) {
     document.getElementById("list").innerHTML = "<p style='color:#5a6472'>Δημιούργησε πρώτα ένα project.</p>";
     return;
   }
 
-  const params = new URLSearchParams();
-  params.set("project_id", currentProject);
-  if (askStatusFilter) params.set("status", askStatusFilter);
-
-  const response = await fetch("/api/asks?" + params.toString());
+  const [, response] = await Promise.all([
+    refreshSprints(),
+    fetch("/api/asks?project_id=" + encodeURIComponent(currentProject)),
+  ]);
   const allAsks = await response.json().catch(function() { return []; });
   const list = document.getElementById("list");
   if (!Array.isArray(allAsks)) {
@@ -1332,9 +1353,23 @@ async function load() {
   }
   asksById = {};
   allAsks.forEach(function(ask) { asksById[ask.id] = ask; });
+  lastAllAsks = allAsks;
+  renderAskList();
+}
 
+let lastAllAsks = [];
+
+function askMatchesStatusFilter(ask) {
+  if (!askStatusFilter) return true;
+  return askStatusFilter === "overdue" ? !!ask.is_overdue : ask.status === askStatusFilter;
+}
+
+// Render από τα ήδη φορτωμένα δεδομένα (χωρίς δίκτυο) — χρησιμοποιείται και μετά από κάθε γρήγορη αλλαγή.
+function renderAskList() {
+  const list = document.getElementById("list");
   const view = VIEW_DEFS[currentView] || VIEW_DEFS[""];
-  const asks = view.filter ? allAsks.filter(view.filter) : allAsks;
+  const base = lastAllAsks.filter(askMatchesStatusFilter);
+  const asks = view.filter ? base.filter(view.filter) : base;
 
   if (!asks.length) {
     list.innerHTML = "<p style='color:#5a6472'>Καμία ενέργεια" + (currentView ? " σε αυτή την προβολή" : "") + ".</p>";
@@ -1418,12 +1453,6 @@ const STATUS_LABELS = { open: "Ανοιχτή", accepted: "Αναλήφθηκε"
 const PRIORITY_LABELS = { critical: "Critical", high: "High", medium: "Medium", low: "Low" };
 
 function renderAskCard(ask) {
-  const canEdit = canManage(ask);
-  const editDeleteButtons = canEdit
-    ? '<button class="edit-button" onclick="showEdit(\'' + esc(ask.id) + '\')">Επεξεργασία</button>' +
-      '<button class="delete-button" onclick="deleteAsk(\'' + esc(ask.id) + '\')">Διαγραφή</button>'
-    : '<span class="locked-note">🔒 μόνο δημιουργός ή admin</span>';
-
   const overdueBadge = ask.is_overdue ? '<span class="pill overduebadge">⚠️ Εκπρόθεσμη</span>' : "";
   const blockingBadge = ask.go_live_blocking === "yes"
     ? '<span class="pill blocking">⛔ Go-Live blocking</span>'
@@ -1448,7 +1477,7 @@ function renderAskCard(ask) {
       '<div style="flex:1;min-width:0">' +
         '<div class="title">' + esc(ask.title) + '</div>' +
         '<div class="chips">' +
-          '<span class="chip">👤 <b>' + esc(ask.owner || "—") + '</b></span>' +
+          ownerChipHtml(ask) +
           (ask.assignees ? '<span class="chip">👥 ' + esc(ask.assignees) + '</span>' : "") +
           (ask.accountable ? '<span class="chip">🎯 ' + esc(ask.accountable) + '</span>' : "") +
           '<span class="chip">📅 <b>' + due + '</b></span>' +
@@ -1471,13 +1500,7 @@ function renderAskCard(ask) {
         priorityPill +
         '<span class="pill ' + esc(ask.status) + '">' + esc(STATUS_LABELS[ask.status] || ask.status) + '</span>' +
         overdueBadge + blockingBadge +
-        '<details class="action-menu"><summary aria-label="Επιλογές ενέργειας" title="Επιλογές ενέργειας">⋯</summary>' +
-          '<div class="action-menu-content">' +
-            '<button title="Ανάληψη ενέργειας" onclick="takeAsk(\'' + esc(ask.id) + '\')">Ανάληψη</button>' +
-            '<button title="Ολοκληρώθηκε" onclick="setStatus(\'' + esc(ask.id) + '\',\'done\')">Ολοκλήρωση</button>' +
-            editDeleteButtons +
-          '</div>' +
-        '</details>' +
+        askActionsHtml(ask) +
       '</div>' +
     '</div>'
   );
@@ -1497,30 +1520,189 @@ function adoLinkHtml(ask) {
     'onclick="event.stopPropagation()" title="Άνοιγμα στο Azure DevOps">ADO ↗</a>';
 }
 
-// Ανάληψη = ο συνδεδεμένος χρήστης γίνεται υπεύθυνος (αν δεν έχει ήδη) και το ask περνά σε «Αναλήφθηκε».
-async function takeAsk(id) {
-  try {
-    const claim = await fetch("/api/asks/" + encodeURIComponent(id) + "/claim", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "claim" }),
-    });
-    const data = await claim.json().catch(function() { return {}; });
-    if (!claim.ok) { showToast(data.error || "Δεν έγινε η ανάληψη."); load(); return; }
-  } catch (error) {
-    showToast("Δεν έγινε η ανάληψη.");
-    return;
-  }
-  await setStatus(id, "accepted");
+function ownerInitials(owner) {
+  const value = String(owner || "").trim();
+  if (!value) return "?";
+  const member = projectAssignees.find(function(m) { return m.email === value.toLowerCase(); });
+  const source = member && member.name ? member.name : value;
+  if (source.indexOf("@") !== -1) return initialsFromEmail(source);
+  const parts = source.split(/\s+/).filter(Boolean);
+  return ((parts[0] || "?")[0] + (parts.length > 1 ? parts[1][0] : "")).toUpperCase();
 }
 
-async function setStatus(id, status) {
-  await fetch("/api/asks/" + id + "/status", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ status: status }),
+function ownerChipHtml(ask) {
+  if (!ask.owner) return '<span class="chip chip-unassigned">Χωρίς υπεύθυνο</span>';
+  const mine = String(ask.owner).toLowerCase() === String(currentUser || "").toLowerCase();
+  return '<span class="chip chip-owner' + (mine ? " is-mine" : "") + '" title="' + esc(ask.owner) + '">' +
+    '<span class="avatar">' + esc(ownerInitials(ask.owner)) + '</span><b>' + esc(mine ? "Εγώ" : ownerShortName(ask.owner)) + '</b></span>';
+}
+
+function ownerShortName(owner) {
+  const member = projectAssignees.find(function(m) { return m.email === String(owner).toLowerCase(); });
+  if (member && member.name) return member.name;
+  return String(owner).split("@")[0];
+}
+
+// Ορατές ενέργειες αντί για το menu «⋯»: ανάθεση, επόμενο βήμα, λεπτομέρειες.
+function askActionsHtml(ask) {
+  const id = esc(ask.id);
+  let primary = "";
+  if (ask.status === "done") {
+    primary = '<button type="button" class="secondary" onclick="quickUpdate(\'' + id + '\', { status: \'open\' })">Άνοιγμα ξανά</button>';
+  } else if (!ask.owner) {
+    primary = '<button type="button" onclick="takeAsk(\'' + id + '\')">Ανάληψη</button>';
+  } else if (ask.status === "open") {
+    primary = '<button type="button" onclick="quickUpdate(\'' + id + '\', { status: \'accepted\' })">Έναρξη</button>';
+  } else {
+    primary = '<button type="button" onclick="quickUpdate(\'' + id + '\', { status: \'done\' })">Ολοκλήρωση ✓</button>';
+  }
+  return '<div class="ask-actions">' +
+    '<select class="assign-select" aria-label="Ανάθεση σε" onchange="quickUpdate(\'' + id + '\', { owner: this.value })">' +
+      ownerOptions(ask.owner || "", true).replace("Χωρίς ανάθεση", "Ανάθεση σε…") + '</select>' +
+    primary +
+    '<button type="button" class="secondary" onclick="openAskDetail(\'' + id + '\')">Λεπτομέρειες</button>' +
+  '</div>';
+}
+
+function refreshCurrentView() {
+  if (filter === "__board__") return refreshBoard();
+  if (filter === "__sprints__") return loadSprintsView();
+  return load();
+}
+
+// Ξαναζωγραφίζει την τρέχουσα οθόνη από τα δεδομένα στη μνήμη (χωρίς δίκτυο).
+function rerenderCurrentView() {
+  if (filter === "__board__") renderBoardFromCache();
+  else if (filter === "__sprints__") document.getElementById("sprintsView").innerHTML = renderSprintsView(sprintsAsks);
+  else if (filter === "__asks__") renderAskList();
+}
+
+function applyLocalPatch(ask, patch) {
+  ["owner", "status", "ado_url", "sprint_id", "title", "due_date"].forEach(function(key) {
+    if (patch[key] !== undefined) ask[key] = patch[key] === "" && key !== "owner" ? null : patch[key];
   });
-  load();
+  if (patch.story_points !== undefined) ask.story_points = patch.story_points === null || patch.story_points === "" ? null : Number(patch.story_points);
+  ask.is_overdue = !!(ask.due_date && ask.due_date < todayPlus(0) && ask.status !== "done");
+}
+
+function afterAskChange(patch) {
+  rerenderCurrentView();
+  // Τα σύνολα των sprints (SP, ολοκληρωμένα) έρχονται από τον server: ανανέωση στο παρασκήνιο.
+  if (filter === "__sprints__" && (patch.status !== undefined || patch.story_points !== undefined || patch.sprint_id !== undefined)) {
+    refreshSprints().then(function() { if (filter === "__sprints__") rerenderCurrentView(); });
+  }
+}
+
+// Αλλαγές που επιτρέπονται σε κάθε μέλος (ανάθεση, status, SP, sprint, ADO link).
+// Η οθόνη αλλάζει αμέσως· αν ο server το απορρίψει, επιστρέφει η προηγούμενη κατάσταση.
+async function quickUpdate(id, payload) {
+  const ask = asksById[id];
+  const before = ask ? Object.assign({}, ask) : null;
+  if (ask) { applyLocalPatch(ask, payload); afterAskChange(payload); }
+  try {
+    const response = await fetch("/api/asks/" + encodeURIComponent(id) + "/quick", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(function() { return {}; });
+    if (!response.ok) throw new Error(data.error || "Η αλλαγή δεν έγινε.");
+  } catch (error) {
+    if (ask && before) { Object.assign(ask, before); rerenderCurrentView(); }
+    showToast(error.message || "Η αλλαγή δεν έγινε.");
+  }
+}
+
+// Ανάληψη = ο συνδεδεμένος χρήστης γίνεται υπεύθυνος και η ενέργεια περνά σε «Αναλήφθηκε».
+function takeAsk(id) {
+  return quickUpdate(id, { owner: currentUser, status: "accepted" });
+}
+
+function openAskDetail(id) {
+  const ask = asksById[id];
+  if (!ask) return;
+  const manage = canManage(ask);
+  const lock = manage ? "" : " disabled";
+  const field = function(label, control) { return '<label class="detail-field"><span>' + label + '</span>' + control + '</label>'; };
+  openModal('<h2>Λεπτομέρειες ενέργειας</h2>' +
+    (manage ? "" : '<p class="helptext">🔒 Τον τίτλο και την προθεσμία τα αλλάζει ο δημιουργός ή admin. Μπορείς να αλλάξεις ανάθεση, status, story points, sprint και ADO link.</p>') +
+    '<div class="detail-grid">' +
+      '<label class="detail-field detail-wide"><span>Τίτλος</span><input id="ad-title" value="' + esc(ask.title) + '"' + lock + ' /></label>' +
+      field("Υπεύθυνος", '<select id="ad-owner">' + ownerOptions(ask.owner || "", true).replace("Χωρίς ανάθεση", "Χωρίς υπεύθυνο") + '</select>') +
+      field("Status", '<select id="ad-status">' +
+        ["open", "accepted", "done"].map(function(v) { return '<option value="' + v + '"' + (ask.status === v ? " selected" : "") + '>' + STATUS_LABELS[v] + '</option>'; }).join("") + '</select>') +
+      field("Story points", '<select id="ad-sp">' + storyPointOptions(ask.story_points) + '</select>') +
+      field("Sprint", '<select id="ad-sprint">' + sprintOptions(ask.sprint_id || "", "Backlog (χωρίς sprint)") + '</select>') +
+      field("Προθεσμία", '<input id="ad-due" type="date" value="' + esc(ask.due_date || "") + '"' + lock + ' />') +
+      '<label class="detail-field detail-wide"><span>Azure DevOps link</span><input id="ad-ado" type="url" placeholder="https://dev.azure.com/..." value="' + esc(ask.ado_url || "") + '" /></label>' +
+    '</div>' +
+    '<p id="ad-msg" class="result-error"></p>' +
+    '<div class="modal-actions">' +
+      (manage ? '<button type="button" class="danger-outline" style="margin-right:auto" onclick="deleteAskFromDetail(\'' + esc(id) + '\')">Διαγραφή</button>' : "") +
+      '<button type="button" class="secondary" onclick="closeModal()">Άκυρο</button>' +
+      '<button type="button" onclick="saveAskDetail(\'' + esc(id) + '\')">Αποθήκευση</button>' +
+    '</div>');
+}
+
+async function saveAskDetail(id) {
+  const ask = asksById[id];
+  const manage = canManage(ask);
+  const value = function(key) { return document.getElementById("ad-" + key).value; };
+  const msg = document.getElementById("ad-msg");
+  const post = async function(url, method, payload) {
+    const response = await fetch(url, { method: method, headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+    const data = await response.json().catch(function() { return {}; });
+    if (!response.ok) throw new Error(data.error || "Η αποθήκευση απέτυχε.");
+  };
+  try {
+    if (manage) {
+      if (!value("title").trim()) throw new Error("Ο τίτλος είναι υποχρεωτικός.");
+      await post("/api/asks/" + encodeURIComponent(id), "PUT", {
+        title: value("title").trim(), owner: value("owner"), due_date: value("due") || null, status: value("status"),
+        story_points: value("sp") || null, ado_url: value("ado").trim() || null,
+      });
+      if (value("sprint") !== String(ask.sprint_id || "")) {
+        await post("/api/asks/" + encodeURIComponent(id) + "/sprint", "POST", { sprint_id: value("sprint") || null });
+      }
+    } else {
+      await post("/api/asks/" + encodeURIComponent(id) + "/quick", "POST", {
+        owner: value("owner"), status: value("status"), story_points: value("sp") || null,
+        sprint_id: value("sprint") || null, ado_url: value("ado").trim() || null,
+      });
+    }
+  } catch (error) {
+    msg.textContent = error.message;
+    return;
+  }
+  const patch = {
+    owner: value("owner"), status: value("status"), story_points: value("sp") || null,
+    sprint_id: value("sprint") || null, ado_url: value("ado").trim() || null,
+  };
+  if (manage) { patch.title = value("title").trim(); patch.due_date = value("due") || null; }
+  applyLocalPatch(ask, patch);
+  closeModal();
+  afterAskChange(patch);
+}
+
+async function deleteAskFromDetail(id) {
+  if (!confirm("Θέλεις σίγουρα να διαγράψεις αυτή την ενέργεια;")) return;
+  const response = await fetch("/api/asks/" + encodeURIComponent(id), { method: "DELETE" });
+  if (!response.ok) {
+    const data = await response.json().catch(function() { return {}; });
+    document.getElementById("ad-msg").textContent = data.error || "Η διαγραφή απέτυχε.";
+    return;
+  }
+  closeModal();
+  removeAskLocally(id);
+}
+
+function removeAskLocally(id) {
+  delete asksById[id];
+  const without = function(list) { return list.filter(function(a) { return a.id !== id; }); };
+  lastAllAsks = without(lastAllAsks);
+  boardCache.asks = without(boardCache.asks);
+  sprintsAsks = without(sprintsAsks);
+  afterAskChange({ status: "removed" });
 }
 
 async function addAsk() {
@@ -1730,92 +1912,6 @@ async function createPreviewAsks() {
       button.textContent = createButtonLabel();
     }
   }
-}
-
-function showEdit(id) {
-  const ask = asksById[id];
-  if (!ask) return;
-  const card = document.getElementById("card-" + ask.id);
-  card.innerHTML =
-    '<div class="edit-form">' +
-      '<div class="edit-grid">' +
-        '<input id="edit-title-' + ask.id + '" value="' + esc(ask.title) + '" placeholder="Τίτλος ενέργειας" />' +
-        '<select id="edit-owner-' + ask.id + '" aria-label="Υπεύθυνος">' + ownerOptions(ask.owner || "", true) + '</select>' +
-        '<input id="edit-date-' + ask.id + '" type="date" value="' + (ask.due_date || "") + '" />' +
-        '<select id="edit-status-' + ask.id + '">' +
-          '<option value="open" ' + (ask.status === "open" ? "selected" : "") + '>Ανοιχτή</option>' +
-          '<option value="accepted" ' + (ask.status === "accepted" ? "selected" : "") + '>Αναλήφθηκε</option>' +
-          '<option value="done" ' + (ask.status === "done" ? "selected" : "") + '>Ολοκληρώθηκε</option>' +
-        '</select>' +
-        '<select id="edit-sp-' + ask.id + '" aria-label="Story points">' + storyPointOptions(ask.story_points) + '</select>' +
-        '<select id="edit-sprint-' + ask.id + '" aria-label="Sprint">' + sprintOptions(ask.sprint_id, "Backlog (χωρίς sprint)") + '</select>' +
-        '<input id="edit-ado-' + ask.id + '" type="url" value="' + esc(ask.ado_url || "") + '" placeholder="Azure DevOps link (https://...)" style="grid-column:1/-1" />' +
-      '</div>' +
-      '<div class="actions" style="justify-content:flex-start">' +
-        '<button onclick="saveEdit(\'' + ask.id + '\')">Αποθήκευση</button>' +
-        '<button class="cancel-button" onclick="load()">Άκυρο</button>' +
-      '</div>' +
-    '</div>';
-}
-
-async function saveEdit(id) {
-  const title = document.getElementById("edit-title-" + id).value.trim();
-  const owner = document.getElementById("edit-owner-" + id).value.trim();
-  const dueDate = document.getElementById("edit-date-" + id).value;
-  const status = document.getElementById("edit-status-" + id).value;
-
-  if (!title) {
-    alert("Ο τίτλος είναι υποχρεωτικός.");
-    return;
-  }
-
-  const response = await fetch("/api/asks/" + id, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      title: title, owner: owner, due_date: dueDate || null, status: status, requester: currentUser,
-      story_points: document.getElementById("edit-sp-" + id).value || null,
-      ado_url: document.getElementById("edit-ado-" + id).value.trim() || null,
-    }),
-  });
-
-  const result = await response.json();
-  if (!response.ok) {
-    alert(result.error || "Η αποθήκευση απέτυχε.");
-    load();
-    return;
-  }
-  const newSprint = document.getElementById("edit-sprint-" + id).value;
-  if (newSprint !== String((asksById[id] && asksById[id].sprint_id) || "")) {
-    const sprintResponse = await fetch("/api/asks/" + id + "/sprint", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sprint_id: newSprint || null }),
-    });
-    if (!sprintResponse.ok) {
-      const sprintResult = await sprintResponse.json().catch(function() { return {}; });
-      alert(sprintResult.error || "Η αλλαγή sprint απέτυχε.");
-    }
-  }
-  await load();
-}
-
-async function deleteAsk(id) {
-  const confirmed = confirm("Θέλεις σίγουρα να διαγράψεις αυτή την ενέργεια;");
-  if (!confirmed) return;
-
-  const response = await fetch("/api/asks/" + id, {
-    method: "DELETE",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ requester: currentUser }),
-  });
-
-  const result = await response.json();
-  if (!response.ok) {
-    alert(result.error || "Η διαγραφή απέτυχε.");
-    return;
-  }
-  await load();
 }
 
 // ---------- Modal (υπάρχον #modalShell) ----------
@@ -2047,7 +2143,7 @@ function navigate(hash) {
 
 function startRouting() {
   if (!parseRoute()) history.replaceState(null, "", defaultRoute());
-  applyRoute();
+  return applyRoute();
 }
 
 function setDocumentTitle(route) {
@@ -2650,14 +2746,52 @@ function sumStoryPoints(asks) {
   return asks.reduce(function(total, ask) { return total + (Number(ask.story_points) || 0); }, 0);
 }
 
+let boardCache = { columns: [], asks: [] };
+
+async function fetchBoardData() {
+  // Στο status board οι στήλες είναι σταθερές, δεν χρειάζεται fetch στηλών.
+  const [columnsRes, asksRes] = await Promise.all([
+    boardGroupBy === "status"
+      ? Promise.resolve(new Response("[]"))
+      : fetch("/api/board-columns?project_id=" + encodeURIComponent(currentProject) + "&group_by=" + boardGroupBy),
+    fetch("/api/asks?project_id=" + encodeURIComponent(currentProject)),
+  ]);
+  const columns = await columnsRes.json().catch(function() { return null; });
+  const asks = await asksRes.json().catch(function() { return null; });
+  if (!Array.isArray(columns) || !Array.isArray(asks)) {
+    throw new Error((columns && columns.error) || (asks && asks.error) || "Σφάλμα φόρτωσης πίνακα.");
+  }
+  asks.forEach(function(ask) { asksById[ask.id] = ask; });
+  return { columns: columns, asks: asks };
+}
+
+function renderBoardShell() {
+  const view = document.getElementById("boardView");
+  view.innerHTML = boardToolbarHtml() + '<div class="ibox-board-scroll" id="boardColumns"></div>';
+  renderBoardFromCache();
+}
+
+function renderBoardFromCache() {
+  const host = document.getElementById("boardColumns");
+  if (!host) return;
+  renderBoardColumns(boardCache.columns, applyBoardSprintFilter(boardCache.asks));
+}
+
 async function loadBoardView() {
   const view = document.getElementById("boardView");
   if (!currentProject) {
     view.innerHTML = "<p style='color:#5a6472'>Δημιούργησε πρώτα ένα project.</p>";
     return;
   }
-  view.innerHTML = boardToolbarHtml() + '<div class="ibox-board-scroll" id="boardColumns"><p style="color:#5a6472">Φόρτωση...</p></div>';
-  await refreshBoard();
+  if (!document.getElementById("boardColumns")) view.innerHTML = "<p style='color:#5a6472'>Φόρτωση...</p>";
+  try {
+    const result = await Promise.all([refreshSprints(), fetchBoardData()]);
+    boardCache = result[1];
+  } catch (error) {
+    view.innerHTML = errorBox(error.message || "Σφάλμα φόρτωσης πίνακα.");
+    return;
+  }
+  renderBoardShell();
 }
 
 function boardToolbarHtml() {
@@ -2702,7 +2836,7 @@ function boardSprintOptions() {
 
 function setBoardSprint(value) {
   boardSprintFilter = value;
-  loadBoardView();
+  renderBoardShell();
 }
 
 function applyBoardSprintFilter(asks) {
@@ -2715,30 +2849,17 @@ function applyBoardSprintFilter(asks) {
 
 function toggleBoardOnlyMine(checked) {
   boardOnlyMine = !!checked;
-  refreshBoard();
+  renderBoardFromCache();
 }
 
+// Πλήρες refetch του πίνακα (μετά από αλλαγές στηλών)· ο πίνακας ξαναστήνεται χωρίς να αναβοσβήνει.
 async function refreshBoard() {
-  const host = document.getElementById("boardColumns");
-  if (!host) return;
+  if (!document.getElementById("boardColumns")) { await loadBoardView(); return; }
   try {
-    // Στο status board οι στήλες είναι σταθερές, δεν χρειάζεται fetch στηλών.
-    const [columnsRes, asksRes] = await Promise.all([
-      boardGroupBy === "status"
-        ? Promise.resolve(new Response("[]"))
-        : fetch("/api/board-columns?project_id=" + encodeURIComponent(currentProject) + "&group_by=" + boardGroupBy),
-      fetch("/api/asks?project_id=" + encodeURIComponent(currentProject)),
-    ]);
-    const columns = await columnsRes.json().catch(function() { return null; });
-    const asks = await asksRes.json().catch(function() { return null; });
-    if (!Array.isArray(columns) || !Array.isArray(asks)) {
-      host.innerHTML = errorBox((columns && columns.error) || (asks && asks.error) || "Σφάλμα φόρτωσης πίνακα.");
-      return;
-    }
-    asks.forEach(function(ask) { asksById[ask.id] = ask; });
-    renderBoardColumns(columns, applyBoardSprintFilter(asks));
+    boardCache = await fetchBoardData();
+    renderBoardFromCache();
   } catch (error) {
-    host.innerHTML = errorBox("Σφάλμα φόρτωσης πίνακα.");
+    document.getElementById("boardColumns").innerHTML = errorBox(error.message || "Σφάλμα φόρτωσης πίνακα.");
   }
 }
 
@@ -2822,32 +2943,36 @@ function boardCardHtml(ask) {
   const overdue = ask.is_overdue ? " st-overdue" : "";
   const due = ask.due_date ? esc(ask.due_date) : "—";
   const statusMode = boardGroupBy === "status";
-  const editButton = ask.can_manage
-    ? '<button type="button" class="ibox-board-card-edit" title="Επεξεργασία" aria-label="Επεξεργασία" onclick="showEdit(\'' + esc(ask.id) + '\')">✎</button>'
-    : "";
   let statusControls = "";
-  if (statusMode) {
+  if (boardGroupBy !== "assignee") {
     const current = statusColumnKey(ask);
     statusControls = '<div class="ibox-board-card-actions">' +
-      (current === "unassigned" ? '<button type="button" onclick="takeBoardCard(\'' + esc(ask.id) + '\')">Ανάληψη</button>' : "") +
-      '<select aria-label="Μετακίνηση σε" onchange="moveBoardCard(\'' + esc(ask.id) + '\', this.value)">' +
+      (!ask.owner && ask.status !== "done" ? '<button type="button" onclick="takeAsk(\'' + esc(ask.id) + '\')">Ανάληψη</button>' : "") +
+      '<select aria-label="Ανάθεση σε" onchange="quickUpdate(\'' + esc(ask.id) + '\', { owner: this.value })">' +
+        ownerOptions(ask.owner || "", true).replace("Χωρίς ανάθεση", "Ανάθεση σε…") + '</select>' +
+      (statusMode ? '<select aria-label="Μετακίνηση σε" onchange="moveBoardCard(\'' + esc(ask.id) + '\', this.value)">' +
         '<option value="">Μετακίνηση σε…</option>' +
         STATUS_BOARD_COLUMNS.filter(function(col) { return col.key !== current; }).map(function(col) {
           return '<option value="' + col.key + '">' + esc(col.label) + '</option>';
         }).join("") +
-      '</select></div>';
+      '</select>' : "") + '</div>';
   }
-  return '<div class="ibox-board-card' + overdue + '" id="card-' + esc(ask.id) + '" draggable="true" data-ask-id="' + esc(ask.id) + '">' +
-    '<div class="title"><span>' + esc(ask.title) + '</span>' + editButton + '</div>' +
+  return '<div class="ibox-board-card' + overdue + '" id="card-' + esc(ask.id) + '" draggable="true" data-ask-id="' + esc(ask.id) + '" onclick="boardCardClick(event, \'' + esc(ask.id) + '\')">' +
+    '<div class="title"><span>' + esc(ask.title) + '</span></div>' +
     '<div class="chips">' +
       '<span class="chip">📅 ' + due + '</span>' +
       (ask.story_points ? '<span class="chip sp-chip" title="Story points">⚑ ' + esc(ask.story_points) + ' SP</span>' : "") +
-      ((boardGroupBy === "section" || statusMode) && ask.owner ? '<span class="chip">👤 ' + esc(ask.owner) + '</span>' : "") +
+      ((boardGroupBy === "section" || statusMode) && ask.owner ? ownerChipHtml(ask) : "") +
       (boardGroupBy === "assignee" && ask.section ? '<span class="chip">🗂 ' + esc(ask.section) + '</span>' : "") +
       adoLinkHtml(ask) +
     '</div>' +
     statusControls +
   '</div>';
+}
+
+function boardCardClick(event, id) {
+  if (event.target.closest("select, button, a, option")) return;
+  openAskDetail(id);
 }
 
 function wireBoardDragEvents() {
@@ -2902,44 +3027,24 @@ function wireBoardDragEvents() {
   });
 }
 
-async function boardPost(url, payload) {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json().catch(function() { return {}; });
-  if (!response.ok) throw new Error(data.error || "Δεν έγινε η μετακίνηση.");
-}
-
-async function takeBoardCard(askId) {
-  await moveStatusCard(askId, "open");
-}
-
-// Στο status board: κάρτα χωρίς υπεύθυνο τον αποκτά όταν φεύγει από τη στήλη «Χωρίς υπεύθυνο»
+// Status board: κάρτα χωρίς υπεύθυνο τον αποκτά όταν φεύγει από τη στήλη «Χωρίς υπεύθυνο»
 // (αυτό είναι το «το παίρνω πάνω μου»)· η επιστροφή εκεί τον αποδεσμεύει.
 async function moveStatusCard(askId, target) {
   const ask = asksById[askId];
   if (!ask || !target || statusColumnKey(ask) === target) return;
-  const base = "/api/asks/" + encodeURIComponent(askId);
-  try {
-    if (target === "unassigned") {
-      await boardPost(base + "/claim", { action: "release" });
-      if (ask.status !== "open") await boardPost(base + "/status", { status: "open" });
-    } else {
-      if (!String(ask.owner || "").trim()) await boardPost(base + "/claim", { action: "claim" });
-      if (ask.status !== target) await boardPost(base + "/status", { status: target });
-    }
-  } catch (error) {
-    showToast(error.message || "Δεν έγινε η μετακίνηση.");
-  }
-  await refreshBoard();
+  if (target === "unassigned") { await quickUpdate(askId, { owner: "", status: "open" }); return; }
+  const payload = { status: target };
+  if (!String(ask.owner || "").trim()) payload.owner = currentUser;
+  await quickUpdate(askId, payload);
 }
 
 async function moveBoardCard(askId, columnKey) {
   if (boardGroupBy === "status") { await moveStatusCard(askId, columnKey); return; }
   const ask = asksById[askId];
-  if (ask && boardCardKey(ask) === columnKey) return;
+  if (!ask || boardCardKey(ask) === columnKey) return;
+  const before = { owner: ask.owner, section: ask.section };
+  if (boardGroupBy === "assignee") ask.owner = columnKey; else ask.section = columnKey;
+  renderBoardFromCache();
   try {
     const response = await fetch("/api/asks/" + encodeURIComponent(askId) + "/move", {
       method: "POST",
@@ -2947,10 +3052,11 @@ async function moveBoardCard(askId, columnKey) {
       body: JSON.stringify({ group_by: boardGroupBy, column_key: columnKey }),
     });
     const data = await response.json().catch(function() { return {}; });
-    if (!response.ok) { showToast(data.error || "Δεν έγινε η μετακίνηση."); return; }
-    await refreshBoard();
+    if (!response.ok) throw new Error(data.error || "Δεν έγινε η μετακίνηση.");
   } catch (error) {
-    showToast("Δεν έγινε η μετακίνηση.");
+    Object.assign(ask, before);
+    renderBoardFromCache();
+    showToast(error.message || "Δεν έγινε η μετακίνηση.");
   }
 }
 
@@ -3069,6 +3175,8 @@ function sprintChipHtml(ask) {
   return sprint ? '<span class="chip">🏁 ' + esc(sprint.name) + '</span>' : "";
 }
 
+let sprintsAsks = [];
+
 async function loadSprintsView() {
   const view = document.getElementById("sprintsView");
   if (!currentProject) {
@@ -3084,6 +3192,7 @@ async function loadSprintsView() {
     const asks = await asksRes.json().catch(function() { return null; });
     if (!Array.isArray(asks)) { view.innerHTML = errorBox((asks && asks.error) || "Σφάλμα φόρτωσης sprints."); return; }
     asks.forEach(function(ask) { asksById[ask.id] = ask; });
+    sprintsAsks = asks;
     view.innerHTML = renderSprintsView(asks);
   } catch (error) {
     view.innerHTML = errorBox("Σφάλμα φόρτωσης sprints.");
@@ -3169,11 +3278,8 @@ function sprintsUrl(id) {
   return "/api/projects/" + encodeURIComponent(currentProject) + "/sprints" + (id ? "/" + encodeURIComponent(id) : "");
 }
 
-async function assignAskToSprint(askId, sprintId) {
-  try {
-    await sprintRequest("/api/asks/" + encodeURIComponent(askId) + "/sprint", "POST", { sprint_id: sprintId || null });
-  } catch (error) { showToast(error.message); }
-  await loadSprintsView();
+function assignAskToSprint(askId, sprintId) {
+  return quickUpdate(askId, { sprint_id: sprintId || null });
 }
 
 function openSprintForm(id) {

@@ -2703,6 +2703,75 @@ export default {
         return json({ ok: true, owner: me });
       }
 
+      // --- Γρήγορες αλλαγές από κάθε μέλος: ανάθεση, status, story points, sprint, ADO link ---
+      // Ανάθεση: ελεύθερη ενέργεια ή δική μου μπορώ να την αναθέσω σε οποιοδήποτε μέλος· ενέργεια που ανήκει
+      // σε άλλον την αλλάζει μόνο δημιουργός ask/project ή admin. Τίτλος και προθεσμία μένουν στο PUT.
+      if (path.match(/^\/api\/asks\/[^/]+\/quick$/) && request.method === "POST") {
+        const askId = path.split("/")[3];
+        const b = await request.json().catch(() => ({}));
+        const access = await getAskAccess(env, actor, askId);
+        if (!access.canView) return json({ error: "Το ask δεν βρέθηκε" }, 404);
+        const project = await getProjectById(env, access.ask.project_id);
+        const current = await env.DB.prepare("SELECT title, due_date, owner, story_points FROM asks WHERE id = ?").bind(askId).first();
+
+        const sets = [];
+        const binds = [];
+        const notes = [];
+        let newOwner = null;
+
+        if (b.owner !== undefined) {
+          const me = String(actor.email || "").toLowerCase();
+          const before = String(current.owner || "").trim();
+          const wanted = String(b.owner || "").trim().toLowerCase();
+          if (wanted !== before.toLowerCase()) {
+            if (before && before.toLowerCase() !== me && !access.canManage) {
+              return json({ error: `Η ενέργεια ανήκει στον/στην ${before}. Την αλλάζει μόνο αυτός/αυτή, ο δημιουργός ή admin.` }, 403);
+            }
+            const resolved = await resolveProjectAssignee(env, project, wanted);
+            if (resolved === null) return json({ error: "Ο υπεύθυνος πρέπει να είναι μέλος του project." }, 400);
+            sets.push("owner = ?"); binds.push(resolved);
+            notes.push(resolved ? `Assigned to ${resolved} by ${me}` : `Unassigned by ${me}`);
+            newOwner = resolved;
+          }
+        }
+        if (b.status !== undefined) {
+          if (!["open", "accepted", "done"].includes(b.status)) return json({ error: "Μη έγκυρο status" }, 400);
+          sets.push("status = ?"); binds.push(b.status);
+          notes.push(`Status: ${b.status}`);
+        }
+        const storyPoints = parseStoryPoints(b.story_points);
+        if (storyPoints && storyPoints.error) return json({ error: storyPoints.error }, 400);
+        if (storyPoints !== undefined) { sets.push("story_points = ?"); binds.push(storyPoints); notes.push("Story points updated"); }
+        const adoUrl = parseAdoUrl(b.ado_url);
+        if (adoUrl && adoUrl.error) return json({ error: adoUrl.error }, 400);
+        if (adoUrl !== undefined) { sets.push("ado_url = ?"); binds.push(adoUrl); notes.push("ADO link updated"); }
+        if (b.sprint_id !== undefined) {
+          let sprintId = null;
+          if (b.sprint_id) {
+            const sprint = await getSprint(env, project.id, String(b.sprint_id));
+            if (!sprint || sprint.status === "closed") return json({ error: "Μη έγκυρο sprint." }, 400);
+            sprintId = sprint.id;
+          }
+          sets.push("sprint_id = ?"); binds.push(sprintId);
+          notes.push(sprintId ? "Added to sprint" : "Moved to backlog");
+        }
+
+        if (!sets.length) return json({ ok: true });
+        await env.DB.prepare(`UPDATE asks SET ${sets.join(", ")} WHERE id = ?`).bind(...binds, askId).run();
+        await env.DB.prepare("INSERT INTO events (id, ask_id, type, note) VALUES (?,?,'updated',?)")
+          .bind(uid(), askId, notes.join("; ").slice(0, 300)).run();
+        if (newOwner) {
+          await notifyAssignments(env, {
+            project, byEmail: sessionEmail,
+            assignments: [{
+              owner: newOwner, title: current.title, due_date: current.due_date,
+              story_points: storyPoints !== undefined ? storyPoints : current.story_points,
+            }],
+          });
+        }
+        return json({ ok: true });
+      }
+
       // --- Επεξεργασία (edit) ask ---
       if (path.match(/^\/api\/asks\/[^/]+$/) && request.method === "PUT") {
         const askId = path.split("/")[3];
