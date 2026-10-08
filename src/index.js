@@ -415,6 +415,31 @@ async function resolveProjectAssignee(env, project, value, previousOwner = "") {
   return member ? email : null;
 }
 
+// ---------- Story points (Fibonacci) και link προς Azure DevOps ----------
+const STORY_POINT_VALUES = [1, 2, 3, 5, 8, 13, 21];
+
+// undefined = το πεδίο δεν στάλθηκε (άσε το ως έχει)· null = καθάρισμα· αλλιώς ο αριθμός ή { error }.
+function parseStoryPoints(value) {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  const n = Number(value);
+  return STORY_POINT_VALUES.includes(n) ? n : { error: `Τα story points πρέπει να είναι ένα από: ${STORY_POINT_VALUES.join(", ")}.` };
+}
+
+// Μόνο https links (αποκλείει javascript: κλπ.) — δεν περιορίζουμε το host, ώστε να δουλεύει και με on-prem ADO.
+function parseAdoUrl(value) {
+  if (value === undefined) return undefined;
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:" || raw.length > 500) throw new Error("bad");
+    return u.toString();
+  } catch {
+    return { error: "Το ADO link πρέπει να είναι έγκυρο https URL." };
+  }
+}
+
 // ---------- Board (Step 5): στήλες drag-and-drop ανά project, ομαδοποίηση section/assignee ----------
 // Γενικό, όχι ανά συγκεκριμένο project· ο κάθε project owner/admin διαχειρίζεται τις δικές του στήλες.
 const BOARD_GROUP_BYS = ["section", "assignee"];
@@ -2381,13 +2406,19 @@ export default {
         const owner = await resolveProjectAssignee(env, project, b.owner);
         if (owner === null) return json({ error: "Ο owner πρέπει να είναι μέλος του project." }, 400);
 
+        const storyPoints = parseStoryPoints(b.story_points);
+        if (storyPoints && storyPoints.error) return json({ error: storyPoints.error }, 400);
+        const adoUrl = parseAdoUrl(b.ado_url);
+        if (adoUrl && adoUrl.error) return json({ error: adoUrl.error }, 400);
+
         const id = uid();
         await env.DB.prepare(
-          `INSERT INTO asks (id, project_id, title, owner, requested_by, created_by, created_by_user_id, due_date)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO asks (id, project_id, title, owner, requested_by, created_by, created_by_user_id, due_date, story_points, ado_url)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).bind(
           id, project.id, title, owner, b.requested_by || "",
-          sessionEmail, actor.id, b.due_date || null
+          sessionEmail, actor.id, b.due_date || null,
+          storyPoints ?? null, adoUrl ?? null
         ).run();
         return json({ id, ok: true });
       }
@@ -2409,6 +2440,44 @@ export default {
           "INSERT INTO events (id, ask_id, type, note) VALUES (?,?,?,?)"
         ).bind(uid(), askId, b.status, "status change").run();
         return json({ ok: true });
+      }
+
+      // --- Ανάληψη / αποδέσμευση: κάθε μέλος του project παίρνει ένα ask πάνω του (ή το αφήνει) ---
+      if (path.match(/^\/api\/asks\/[^/]+\/claim$/) && request.method === "POST") {
+        const askId = path.split("/")[3];
+        const b = await request.json().catch(() => ({}));
+        const release = b.action === "release";
+
+        const access = await getAskAccess(env, actor, askId);
+        if (!access.canView) return json({ error: "Το ask δεν βρέθηκε" }, 404);
+
+        const me = String(actor.email || "").toLowerCase();
+        const current = String(access.ask.owner || "").trim();
+        const isMine = current.toLowerCase() === me;
+
+        if (release) {
+          if (!current) return json({ ok: true });
+          if (!isMine && !access.canManage) {
+            return json({ error: "Μόνο ο τρέχων υπεύθυνος, ο δημιουργός ή admin μπορεί να αποδεσμεύσει το ask." }, 403);
+          }
+          await env.DB.prepare("UPDATE asks SET owner = '' WHERE id = ?").bind(askId).run();
+          await env.DB.prepare("INSERT INTO events (id, ask_id, type, note) VALUES (?,?,'updated',?)")
+            .bind(uid(), askId, `Released by ${me}`).run();
+          return json({ ok: true });
+        }
+
+        if (current && !isMine) {
+          return json({ error: `Το ask έχει ήδη υπεύθυνο (${current}).` }, 409);
+        }
+        if (!isMine) {
+          // Υπό όρο, ώστε αν δύο άτομα πατήσουν ταυτόχρονα να κερδίσει μόνο το πρώτο.
+          const res = await env.DB.prepare("UPDATE asks SET owner = ? WHERE id = ? AND (owner IS NULL OR owner = '')")
+            .bind(me, askId).run();
+          if (!res.meta?.changes) return json({ error: "Το ask μόλις το ανέλαβε κάποιος άλλος." }, 409);
+          await env.DB.prepare("INSERT INTO events (id, ask_id, type, note) VALUES (?,?,'updated',?)")
+            .bind(uid(), askId, `Claimed by ${me}`).run();
+        }
+        return json({ ok: true, owner: me });
       }
 
       // --- Επεξεργασία (edit) ask ---
@@ -2434,9 +2503,17 @@ export default {
         const resolvedOwner = await resolveProjectAssignee(env, project, owner, access.ask.owner);
         if (resolvedOwner === null) return json({ error: "Ο owner πρέπει να είναι μέλος του project." }, 400);
 
-        await env.DB.prepare(
-          `UPDATE asks SET title = ?, owner = ?, due_date = ?, status = ? WHERE id = ?`
-        ).bind(title, resolvedOwner, dueDate, status, askId).run();
+        const storyPoints = parseStoryPoints(body.story_points);
+        if (storyPoints && storyPoints.error) return json({ error: storyPoints.error }, 400);
+        const adoUrl = parseAdoUrl(body.ado_url);
+        if (adoUrl && adoUrl.error) return json({ error: adoUrl.error }, 400);
+
+        // Τα story points / ADO link αλλάζουν μόνο αν στάλθηκαν — παλιοί clients δεν τα σβήνουν κατά λάθος.
+        const sets = ["title = ?", "owner = ?", "due_date = ?", "status = ?"];
+        const binds = [title, resolvedOwner, dueDate, status];
+        if (storyPoints !== undefined) { sets.push("story_points = ?"); binds.push(storyPoints); }
+        if (adoUrl !== undefined) { sets.push("ado_url = ?"); binds.push(adoUrl); }
+        await env.DB.prepare(`UPDATE asks SET ${sets.join(", ")} WHERE id = ?`).bind(...binds, askId).run();
 
         await env.DB.prepare(
           `INSERT INTO events (id, ask_id, type, note) VALUES (?, ?, 'updated', 'Ask edited by user')`

@@ -148,6 +148,12 @@
     .ibox-board-card.st-overdue{border-left-color:var(--red)}
     .ibox-board-card .title{font-size:13px;font-weight:600;color:var(--ink)}
     .ibox-board-card .chips{margin-top:6px}
+    .ibox-board-card .title{display:flex;justify-content:space-between;gap:6px;align-items:flex-start}
+    .ibox-board-card-edit{background:transparent;color:var(--grey);box-shadow:none;padding:0 6px;min-height:28px;min-width:28px;font-size:14px}
+    .ibox-board-card-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+    .ibox-board-card-actions button{font-size:12px;padding:4px 10px;min-height:32px}
+    .ibox-board-card-actions select{flex:1;min-width:0;font-size:12px;min-height:32px}
+    .ibox-board-mine{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink)}
     .ibox-board-card .chip{font-size:11px;padding:2px 7px}
     main{max-width:1000px;margin:0 auto;padding:26px}
     #app.app-shell{max-width:none;margin:0;padding:28px 36px 72px 304px}
@@ -191,6 +197,9 @@
   .title{font-weight:750;font-size:16px;color:var(--ink);line-height:1.35}
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
   .chip{font-size:12px;color:var(--grey);background:#f5f4fb;border-radius:8px;padding:3px 9px;white-space:nowrap}
+  .sp-chip{color:var(--v-strong);background:var(--bluebg)}
+  a.ado-chip{color:var(--v-strong);text-decoration:none}
+  a.ado-chip:hover{text-decoration:underline}
   .chip b{color:var(--ink);font-weight:600}
   .chip.warn{background:var(--amberbg);color:var(--amber)}
   .pill.prio-critical{background:#fde8e8;color:#b42318;margin-right:6px}
@@ -494,6 +503,10 @@
         <option value="">Χωρίς ανάθεση</option>
       </select>
       <input id="d" type="date" />
+      <select id="sp" aria-label="Story points" style="width:110px">
+        <option value="">SP</option>
+        <option>1</option><option>2</option><option>3</option><option>5</option><option>8</option><option>13</option><option>21</option>
+      </select>
       <button onclick="addAsk()">Προσθήκη</button>
     </div>
 
@@ -1409,6 +1422,8 @@ function renderAskCard(ask) {
           (ask.assignees ? '<span class="chip">👥 ' + esc(ask.assignees) + '</span>' : "") +
           (ask.accountable ? '<span class="chip">🎯 ' + esc(ask.accountable) + '</span>' : "") +
           '<span class="chip">📅 <b>' + due + '</b></span>' +
+          (ask.story_points ? '<span class="chip sp-chip" title="Story points">⚑ <b>' + esc(ask.story_points) + '</b> SP</span>' : "") +
+          adoLinkHtml(ask) +
           (ask.start_date ? '<span class="chip">▶️ ' + esc(ask.start_date) + '</span>' : "") +
           (ask.section ? '<span class="chip">🗂 ' + esc(ask.section) + '</span>' : "") +
           (ask.source_status ? '<span class="chip">⏳ ' + esc(ask.source_status) + '</span>' : "") +
@@ -1427,7 +1442,7 @@ function renderAskCard(ask) {
         overdueBadge + blockingBadge +
         '<details class="action-menu"><summary aria-label="Επιλογές ενέργειας" title="Επιλογές ενέργειας">⋯</summary>' +
           '<div class="action-menu-content">' +
-            '<button title="Ανάληψη ενέργειας" onclick="setStatus(\'' + esc(ask.id) + '\',\'accepted\')">Ανάληψη</button>' +
+            '<button title="Ανάληψη ενέργειας" onclick="takeAsk(\'' + esc(ask.id) + '\')">Ανάληψη</button>' +
             '<button title="Ολοκληρώθηκε" onclick="setStatus(\'' + esc(ask.id) + '\',\'done\')">Ολοκλήρωση</button>' +
             editDeleteButtons +
           '</div>' +
@@ -1435,6 +1450,37 @@ function renderAskCard(ask) {
       '</div>' +
     '</div>'
   );
+}
+
+const STORY_POINT_OPTIONS = [1, 2, 3, 5, 8, 13, 21];
+
+function storyPointOptions(selected) {
+  return '<option value="">Χωρίς SP</option>' + STORY_POINT_OPTIONS.map(function(n) {
+    return '<option value="' + n + '"' + (Number(selected) === n ? " selected" : "") + '>' + n + ' SP</option>';
+  }).join("");
+}
+
+function adoLinkHtml(ask) {
+  if (!ask.ado_url) return "";
+  return '<a class="chip ado-chip" href="' + esc(ask.ado_url) + '" target="_blank" rel="noopener noreferrer" ' +
+    'onclick="event.stopPropagation()" title="Άνοιγμα στο Azure DevOps">ADO ↗</a>';
+}
+
+// Ανάληψη = ο συνδεδεμένος χρήστης γίνεται υπεύθυνος (αν δεν έχει ήδη) και το ask περνά σε «Αναλήφθηκε».
+async function takeAsk(id) {
+  try {
+    const claim = await fetch("/api/asks/" + encodeURIComponent(id) + "/claim", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "claim" }),
+    });
+    const data = await claim.json().catch(function() { return {}; });
+    if (!claim.ok) { showToast(data.error || "Δεν έγινε η ανάληψη."); load(); return; }
+  } catch (error) {
+    showToast("Δεν έγινε η ανάληψη.");
+    return;
+  }
+  await setStatus(id, "accepted");
 }
 
 async function setStatus(id, status) {
@@ -1457,6 +1503,7 @@ async function addAsk() {
       title: title,
       owner: document.getElementById("o").value,
       due_date: document.getElementById("d").value,
+      story_points: document.getElementById("sp").value || null,
       project_id: currentProject,
       created_by: currentUser,
     }),
@@ -1470,6 +1517,7 @@ async function addAsk() {
   document.getElementById("t").value = "";
   document.getElementById("o").value = "";
   document.getElementById("d").value = "";
+  document.getElementById("sp").value = "";
   document.getElementById("msg").textContent = "";
   load();
 }
@@ -1668,6 +1716,8 @@ function showEdit(id) {
           '<option value="accepted" ' + (ask.status === "accepted" ? "selected" : "") + '>Αναλήφθηκε</option>' +
           '<option value="done" ' + (ask.status === "done" ? "selected" : "") + '>Ολοκληρώθηκε</option>' +
         '</select>' +
+        '<select id="edit-sp-' + ask.id + '" aria-label="Story points">' + storyPointOptions(ask.story_points) + '</select>' +
+        '<input id="edit-ado-' + ask.id + '" type="url" value="' + esc(ask.ado_url || "") + '" placeholder="Azure DevOps link (https://...)" style="grid-column:1/-1" />' +
       '</div>' +
       '<div class="actions" style="justify-content:flex-start">' +
         '<button onclick="saveEdit(\'' + ask.id + '\')">Αποθήκευση</button>' +
@@ -1690,7 +1740,11 @@ async function saveEdit(id) {
   const response = await fetch("/api/asks/" + id, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ title: title, owner: owner, due_date: dueDate || null, status: status, requester: currentUser }),
+    body: JSON.stringify({
+      title: title, owner: owner, due_date: dueDate || null, status: status, requester: currentUser,
+      story_points: document.getElementById("edit-sp-" + id).value || null,
+      ado_url: document.getElementById("edit-ado-" + id).value.trim() || null,
+    }),
   });
 
   const result = await response.json();
@@ -2513,11 +2567,33 @@ function showToast(message) {
 
 // ---------- Board (Step 5): drag-and-drop, γενικό σε κάθε project, ομαδοποίηση ανά φάση/άτομο ----------
 let boardGroupBy = (function() {
-  try { return localStorage.getItem("relay_board_groupby") === "assignee" ? "assignee" : "section"; }
+  try {
+    const saved = localStorage.getItem("relay_board_groupby");
+    return saved === "assignee" || saved === "status" ? saved : "section";
+  }
   catch (e) { return "section"; }
 })();
 let draggedAskId = null;
 let draggedColumnId = null;
+let boardOnlyMine = false;
+
+// Kanban ανά status: οι στήλες είναι σταθερές (δεν αποθηκεύονται στη βάση).
+const STATUS_BOARD_COLUMNS = [
+  { key: "unassigned", label: "Χωρίς υπεύθυνο" },
+  { key: "open", label: "Προς υλοποίηση" },
+  { key: "accepted", label: "Σε εξέλιξη" },
+  { key: "done", label: "Ολοκληρώθηκε" },
+];
+
+function statusColumnKey(ask) {
+  if (ask.status === "done") return "done";
+  if (!String(ask.owner || "").trim()) return "unassigned";
+  return ask.status === "accepted" ? "accepted" : "open";
+}
+
+function sumStoryPoints(asks) {
+  return asks.reduce(function(total, ask) { return total + (Number(ask.story_points) || 0); }, 0);
+}
 
 async function loadBoardView() {
   const view = document.getElementById("boardView");
@@ -2534,8 +2610,11 @@ function boardToolbarHtml() {
     '<div class="ibox-board-group-toggle" role="group" aria-label="Ομαδοποίηση πίνακα">' +
       '<button type="button" class="' + (boardGroupBy === "section" ? "active" : "") + '" onclick="setBoardGroupBy(\'section\')">Ανά φάση</button>' +
       '<button type="button" class="' + (boardGroupBy === "assignee" ? "active" : "") + '" onclick="setBoardGroupBy(\'assignee\')">Ανά άτομο</button>' +
+      '<button type="button" class="' + (boardGroupBy === "status" ? "active" : "") + '" onclick="setBoardGroupBy(\'status\')">Ανά status</button>' +
     '</div>' +
-    '<button type="button" onclick="addBoardColumn()">＋ Νέα στήλη</button>' +
+    (boardGroupBy === "status"
+      ? '<label class="ibox-board-mine"><input type="checkbox" onchange="toggleBoardOnlyMine(this.checked)"' + (boardOnlyMine ? " checked" : "") + '> Μόνο τα δικά μου</label>'
+      : '<button type="button" onclick="addBoardColumn()">＋ Νέα στήλη</button>') +
   '</div>';
 }
 
@@ -2546,12 +2625,20 @@ function setBoardGroupBy(mode) {
   loadBoardView();
 }
 
+function toggleBoardOnlyMine(checked) {
+  boardOnlyMine = !!checked;
+  refreshBoard();
+}
+
 async function refreshBoard() {
   const host = document.getElementById("boardColumns");
   if (!host) return;
   try {
+    // Στο status board οι στήλες είναι σταθερές, δεν χρειάζεται fetch στηλών.
     const [columnsRes, asksRes] = await Promise.all([
-      fetch("/api/board-columns?project_id=" + encodeURIComponent(currentProject) + "&group_by=" + boardGroupBy),
+      boardGroupBy === "status"
+        ? Promise.resolve(new Response("[]"))
+        : fetch("/api/board-columns?project_id=" + encodeURIComponent(currentProject) + "&group_by=" + boardGroupBy),
       fetch("/api/asks?project_id=" + encodeURIComponent(currentProject)),
     ]);
     const columns = await columnsRes.json().catch(function() { return null; });
@@ -2568,6 +2655,7 @@ async function refreshBoard() {
 }
 
 function boardCardKey(ask) {
+  if (boardGroupBy === "status") return statusColumnKey(ask);
   return boardGroupBy === "assignee" ? String(ask.owner || "").trim().toLowerCase() : String(ask.section || "").trim();
 }
 
@@ -2577,7 +2665,20 @@ function boardColumnLabel(column) {
   return member && member.name ? member.name + " · " + member.email : column.label;
 }
 
+function renderStatusBoard(asks) {
+  const host = document.getElementById("boardColumns");
+  const me = String(currentUser || "").toLowerCase();
+  const visible = boardOnlyMine
+    ? asks.filter(function(ask) { return String(ask.owner || "").trim().toLowerCase() === me; })
+    : asks;
+  host.innerHTML = '<div class="ibox-board-row">' + STATUS_BOARD_COLUMNS.map(function(col) {
+    return boardColumnHtml("", col.label, col.key, visible.filter(function(ask) { return statusColumnKey(ask) === col.key; }), false);
+  }).join("") + '</div>';
+  wireBoardDragEvents();
+}
+
 function renderBoardColumns(columns, asks) {
+  if (boardGroupBy === "status") { renderStatusBoard(asks); return; }
   const host = document.getElementById("boardColumns");
   const canManageBoard = canManage(projectsById[currentProject]);
   const byKey = {};
@@ -2622,7 +2723,8 @@ function boardColumnHtml(columnId, label, key, cards, canManageBoard) {
   return '<div class="ibox-board-col"' + (columnId ? ' data-column-id="' + esc(columnId) + '"' : "") + '>' +
     '<div class="ibox-board-col-head"' + (canReorder ? ' draggable="true" title="Σύρε για αλλαγή σειράς στηλών"' : "") + '>' +
       (canReorder ? '<span class="ibox-board-col-handle" aria-hidden="true">⠿</span>' : "") +
-      '<span>' + esc(label) + '</span><span class="ibox-board-col-count">' + cards.length + '</span></div>' +
+      '<span>' + esc(label) + '</span><span class="ibox-board-col-count">' + cards.length +
+        (sumStoryPoints(cards) ? ' · ' + sumStoryPoints(cards) + ' SP' : "") + '</span></div>' +
     headerActions +
     '<div class="ibox-board-col-body" data-column-key="' + esc(key) + '">' + cardsHtml + '</div>' +
   '</div>';
@@ -2631,13 +2733,32 @@ function boardColumnHtml(columnId, label, key, cards, canManageBoard) {
 function boardCardHtml(ask) {
   const overdue = ask.is_overdue ? " st-overdue" : "";
   const due = ask.due_date ? esc(ask.due_date) : "—";
-  return '<div class="ibox-board-card' + overdue + '" draggable="true" data-ask-id="' + esc(ask.id) + '" onclick="showEdit(\'' + esc(ask.id) + '\')">' +
-    '<div class="title">' + esc(ask.title) + '</div>' +
+  const statusMode = boardGroupBy === "status";
+  const editButton = ask.can_manage
+    ? '<button type="button" class="ibox-board-card-edit" title="Επεξεργασία" aria-label="Επεξεργασία" onclick="showEdit(\'' + esc(ask.id) + '\')">✎</button>'
+    : "";
+  let statusControls = "";
+  if (statusMode) {
+    const current = statusColumnKey(ask);
+    statusControls = '<div class="ibox-board-card-actions">' +
+      (current === "unassigned" ? '<button type="button" onclick="takeBoardCard(\'' + esc(ask.id) + '\')">Ανάληψη</button>' : "") +
+      '<select aria-label="Μετακίνηση σε" onchange="moveBoardCard(\'' + esc(ask.id) + '\', this.value)">' +
+        '<option value="">Μετακίνηση σε…</option>' +
+        STATUS_BOARD_COLUMNS.filter(function(col) { return col.key !== current; }).map(function(col) {
+          return '<option value="' + col.key + '">' + esc(col.label) + '</option>';
+        }).join("") +
+      '</select></div>';
+  }
+  return '<div class="ibox-board-card' + overdue + '" id="card-' + esc(ask.id) + '" draggable="true" data-ask-id="' + esc(ask.id) + '">' +
+    '<div class="title"><span>' + esc(ask.title) + '</span>' + editButton + '</div>' +
     '<div class="chips">' +
       '<span class="chip">📅 ' + due + '</span>' +
-      (boardGroupBy === "section" && ask.owner ? '<span class="chip">👤 ' + esc(ask.owner) + '</span>' : "") +
+      (ask.story_points ? '<span class="chip sp-chip" title="Story points">⚑ ' + esc(ask.story_points) + ' SP</span>' : "") +
+      ((boardGroupBy === "section" || statusMode) && ask.owner ? '<span class="chip">👤 ' + esc(ask.owner) + '</span>' : "") +
       (boardGroupBy === "assignee" && ask.section ? '<span class="chip">🗂 ' + esc(ask.section) + '</span>' : "") +
+      adoLinkHtml(ask) +
     '</div>' +
+    statusControls +
   '</div>';
 }
 
@@ -2693,7 +2814,42 @@ function wireBoardDragEvents() {
   });
 }
 
+async function boardPost(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(function() { return {}; });
+  if (!response.ok) throw new Error(data.error || "Δεν έγινε η μετακίνηση.");
+}
+
+async function takeBoardCard(askId) {
+  await moveStatusCard(askId, "open");
+}
+
+// Στο status board: κάρτα χωρίς υπεύθυνο τον αποκτά όταν φεύγει από τη στήλη «Χωρίς υπεύθυνο»
+// (αυτό είναι το «το παίρνω πάνω μου»)· η επιστροφή εκεί τον αποδεσμεύει.
+async function moveStatusCard(askId, target) {
+  const ask = asksById[askId];
+  if (!ask || !target || statusColumnKey(ask) === target) return;
+  const base = "/api/asks/" + encodeURIComponent(askId);
+  try {
+    if (target === "unassigned") {
+      await boardPost(base + "/claim", { action: "release" });
+      if (ask.status !== "open") await boardPost(base + "/status", { status: "open" });
+    } else {
+      if (!String(ask.owner || "").trim()) await boardPost(base + "/claim", { action: "claim" });
+      if (ask.status !== target) await boardPost(base + "/status", { status: target });
+    }
+  } catch (error) {
+    showToast(error.message || "Δεν έγινε η μετακίνηση.");
+  }
+  await refreshBoard();
+}
+
 async function moveBoardCard(askId, columnKey) {
+  if (boardGroupBy === "status") { await moveStatusCard(askId, columnKey); return; }
   const ask = asksById[askId];
   if (ask && boardCardKey(ask) === columnKey) return;
   try {

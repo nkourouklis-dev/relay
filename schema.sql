@@ -143,6 +143,8 @@ CREATE TABLE asks (
   import_batch_id TEXT,
   details_json  TEXT,
   import_snapshot_json TEXT,
+  story_points  INTEGER,               -- 1 | 2 | 3 | 5 | 8 | 13 | 21 (migrate_add_story_points_ado.sql)
+  ado_url       TEXT,                  -- link προς Azure DevOps work item
   created_at    TEXT DEFAULT (datetime('now'))
 );
 
