@@ -145,6 +145,7 @@ CREATE TABLE asks (
   import_snapshot_json TEXT,
   story_points  INTEGER,               -- 1 | 2 | 3 | 5 | 8 | 13 | 21 (migrate_add_story_points_ado.sql)
   ado_url       TEXT,                  -- link προς Azure DevOps work item
+  sprint_id     TEXT REFERENCES relay_sprints(id),  -- NULL = backlog (migrate_add_sprints.sql)
   created_at    TEXT DEFAULT (datetime('now'))
 );
 
@@ -186,6 +187,22 @@ CREATE TABLE relay_board_columns (
   created_at   TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX idx_board_columns_project ON relay_board_columns(project_id, group_by, sort_order);
+
+-- Sprints ανά project (βλ. migrate_add_sprints.sql). asks.sprint_id NULL = backlog.
+CREATE TABLE relay_sprints (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES projects(id),
+  name        TEXT NOT NULL,
+  goal        TEXT,
+  start_date  TEXT,
+  end_date    TEXT,
+  status      TEXT NOT NULL DEFAULT 'planned',   -- planned | active | closed
+  created_by_user_id TEXT REFERENCES relay_users(id),
+  created_at  TEXT DEFAULT (datetime('now')),
+  closed_at   TEXT
+);
+CREATE INDEX idx_sprints_project ON relay_sprints(project_id, status);
+CREATE INDEX idx_asks_sprint ON asks(sprint_id);
 
 CREATE TABLE relay_mcp_capture_drafts (
   id            TEXT PRIMARY KEY,

@@ -1,58 +1,64 @@
-# Relay — MVP starter (Cloudflare)
+# Relay
 
-Project tracking που «ζει» μόνο του: Worker + D1 + capture-by-email + μίνι UI.
+Εσωτερικό εργαλείο της ΚΑΥΚΑΣ για την παρακολούθηση ενεργειών ενός project: υπεύθυνος, προθεσμία, story points, sprints και Kanban board. Οι ενέργειες γεννιούνται από email, από επικόλληση κειμένου, από το Microsoft Copilot ή με το χέρι.
 
-## Τι χρειάζεσαι μία φορά
-- Λογαριασμός Cloudflare (δωρεάν): https://dash.cloudflare.com
-- Node.js 18+ εγκατεστημένο
+Live: https://kafkas-relay.pages.dev/
 
-## Ξεκίνημα σε 6 βήματα
+Τεκμηρίωση:
+- `docs/relay-user-manual.md` — οδηγός χρήστη
+- `docs/relay-product-owner-manual.md` — κατάσταση προϊόντος, δικαιώματα, ανοιχτές αποφάσεις, changelog
+- `docs/relay-architecture-technologies.md` — αρχιτεκτονική
+- `docs/copilot-integration.md` — σύνδεση με Microsoft Copilot Studio (MCP)
+- `AGENTS.md` — κανόνες για coding agents
+
+## Στοίβα
+
+Ένας Cloudflare Worker (`src/index.js`) με D1 (SQLite) και Workers AI, στατικό frontend σε vanilla JS (`public/index.html`) και Pages front door (`pages/`). Δεν υπάρχει framework ούτε build step.
+
+## Τοπική εκτέλεση
 
 ```bash
-# 1) Μπες στον φάκελο και εγκατέστησε
-cd relay
 npm install
-
-# 2) Σύνδεση με τον Cloudflare λογαριασμό σου (ανοίγει browser)
 npx wrangler login
+npm run db:local     # schema + demo δεδομένα στην τοπική βάση
+npm run dev          # http://localhost:8787 (τοπικά ο χρήστης είναι αυτόματα admin)
+npm test
+```
 
-# 3) Φτιάξε τη D1 βάση
-npx wrangler d1 create relay-db
-#   -> Αντέγραψε το "database_id" που τυπώνει
-#   -> Κόλλησέ το στο wrangler.jsonc (πεδίο database_id)
+## Βάση δεδομένων
 
-# 4) Δημιούργησε τα tables + demo δεδομένα
-npm run db:local     # τοπικά (για wrangler dev)
-# αργότερα για production:  npm run db:remote
+- `schema.sql` είναι το πλήρες schema για **νέα** βάση.
+- Σε **υπάρχουσα** βάση εφαρμόζονται μόνο τα additive `migrate_*.sql`, με τη σειρά που χρειάζεται. Τα πιο πρόσφατα:
+  - `migrate_add_story_points_ado.sql` — `asks.story_points`, `asks.ado_url`
+  - `migrate_add_sprints.sql` — πίνακας `relay_sprints`, `asks.sprint_id`
+- Τα `ALTER TABLE ... ADD COLUMN` τρέχουν **μία φορά** ανά βάση.
+- Πριν από remote migration: `npx wrangler d1 time-travel info relay-db` και κράτα το bookmark.
 
-# 5) Τρέξε τοπικά -> http://localhost:8787
-npm run dev
+```bash
+npx wrangler d1 execute relay-db --remote --file=./migrate_add_sprints.sql
+```
 
-# 6) Ανέβασέ το live
+## Deploy
+
+```bash
 npm run deploy
 ```
 
-## Capture-by-email (το «μαγικό» κομμάτι)
-1. Στο Cloudflare Dashboard πρόσθεσε ένα domain (ή subdomain, π.χ. `in.relay.app`).
-2. **Email → Email Routing → Enable**.
-3. Φτιάξε κανόνα «Catch-all → Send to a Worker → relay».
-4. Στείλε email στο `demo@<το-domain-σου>` και θα εμφανιστούν asks στο UI.
-   - Το local part (π.χ. `demo`) γίνεται αυτόματα project alias.
+## Ρυθμίσεις (secrets και vars)
 
-## Τι υπάρχει ήδη
-- `src/index.js` — API (`/api/asks`, `/api/ingest`), email handler, cron για overdue.
-- `public/index.html` — UI: λίστα asks, φίλτρα, νέο ask, paste-to-extract.
-- `schema.sql` — projects / sources / asks / events + demo data.
+| Όνομα | Τύπος | Σκοπός |
+|---|---|---|
+| `BETTER_AUTH_SECRET` | secret | Sessions |
+| `RESEND_API_KEY` | secret | Email: κωδικοί σύνδεσης, προσκλήσεις, ειδοποιήσεις, υπενθυμίσεις |
+| `ALLOWED_EMAILS` | secret | Επιπλέον emails εκτός `@kafkas.gr` (comma-separated) |
+| `BETTER_AUTH_URL`, `AUTH_EMAIL_FROM`, `ALLOWED_EMAIL_DOMAIN` | var (`wrangler.jsonc`) | Δημόσιο URL, αποστολέας, επιτρεπτό domain |
 
-## Better Auth foundation (auth phase)
-- Η βάση για το email login παραμένει σε δοκιμαστική προετοιμασία και δεν έχει εκτελεστεί κανένα migration χωρίς επιβεβαίωση από το πραγματικό schema του Better Auth.
-- Το `BETTER_AUTH_SECRET` και το future email-provider secret παραμένουν σε Cloudflare Secret Storage και δεν αποθηκεύονται στο repo.
-- Επί του παρόντος δεν προστίθενται route guards, login UI, owner claim flow, ή οποιαδήποτε αλλαγή στα `asks.owner_user_id` / `asks.owner`.
-- Το magic-link delivery σπάει κλειστά με σαφή, μη ευαίσθητο σφάλμα εάν δεν έχει ρυθμιστεί provider στο περιβάλλον.
+Τα secrets ορίζονται με `npx wrangler secret put <ΟΝΟΜΑ>` και δεν μπαίνουν ποτέ στο repo.
 
-Για local δοκιμές, το `BETTER_AUTH_SECRET` μπορεί να δοθεί μέσω `wrangler dev --var`. Χωρίς `RESEND_API_KEY` το magic-link request χρησιμοποιεί mock transport και δεν εμφανίζει ή καταγράφει το link. Για πραγματική αποστολή απαιτούνται τα secrets `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, `AUTH_EMAIL_FROM` και η μεταβλητή `BETTER_AUTH_URL`.
+## Capture by email
 
-## Επόμενα (όταν θες)
-- Ενεργοποίησε **Workers AI** (ξεκλείδωσε το `ai` binding στο wrangler.jsonc) και
-  άλλαξε `naiveExtract` -> `extractWithAI` στο `src/index.js` για σωστή εξαγωγή.
-- Πρόσθεσε **R2** για attachments, **Vectorize** για dedupe, **auth** (Clerk) + **Stripe**.
+Με Cloudflare Email Routing (catch-all → Worker `relay`), το τοπικό τμήμα της διεύθυνσης (π.χ. `demo@…`) είναι το alias του project. Αυτή η διαδρομή και το `/api/ingest` είναι σκόπιμα **χωρίς** login.
+
+## Cron
+
+Ένα trigger κάθε 15 λεπτά (`wrangler.jsonc`): στέλνει τις υπενθυμίσεις και κάνει τον καθημερινό έλεγχο εκπρόθεσμων.

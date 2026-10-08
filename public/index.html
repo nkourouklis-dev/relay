@@ -198,6 +198,26 @@
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
   .chip{font-size:12px;color:var(--grey);background:#f5f4fb;border-radius:8px;padding:3px 9px;white-space:nowrap}
   .sp-chip{color:var(--v-strong);background:var(--bluebg)}
+  .member-actions{display:inline-flex;gap:6px;flex-wrap:wrap}
+  .ibox-board-sprint{max-width:220px;min-height:36px}
+  .sprint-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px;box-shadow:var(--shadow-sm)}
+  .sprint-card.sprint-active{border-left:4px solid var(--v)}
+  .sprint-card.sprint-closed{opacity:.8}
+  .sprint-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .sprint-head h3{margin:0}
+  .sprint-pill-planned{background:var(--surface-soft);color:var(--grey)}
+  .sprint-pill-active{background:var(--greenbg);color:var(--green)}
+  .sprint-pill-closed{background:var(--surface-soft);color:var(--grey)}
+  .sprint-progress{height:8px;background:var(--surface-soft);border-radius:999px;overflow:hidden;margin:10px 0 4px}
+  .sprint-progress div{height:100%;background:var(--v)}
+  .sprint-stats{font-size:12.5px;color:var(--grey);margin:4px 0 10px}
+  .sprint-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  .sprint-asks{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+  .sprint-ask{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--surface-soft);border-radius:var(--radius-sm)}
+  .sprint-ask.is-done .sprint-ask-title{text-decoration:line-through;color:var(--grey)}
+  .sprint-ask-title{flex:1 1 220px;font-size:13px;font-weight:600}
+  .sprint-ask-meta{display:flex;gap:6px;flex-wrap:wrap}
+  .sprint-ask select{min-width:140px;min-height:36px}
   a.ado-chip{color:var(--v-strong);text-decoration:none}
   a.ado-chip:hover{text-decoration:underline}
   .chip b{color:var(--ink);font-weight:600}
@@ -491,6 +511,7 @@
   <div id="dashboardView" style="display:none"></div>
   <div id="ideasView" style="display:none"></div>
   <div id="boardView" style="display:none"></div>
+  <div id="sprintsView" style="display:none"></div>
   <div id="proposalsView" style="display:none"></div>
   <div id="list"></div>
 
@@ -1221,6 +1242,7 @@ async function load() {
   const isDashboard = filter === "__dashboard__";
   const isIdeas = filter === "__ideas__";
   const isBoard = filter === "__board__";
+  const isSprints = filter === "__sprints__";
   const isProposals = filter === "__proposals__";
   const isAsks = filter === "__asks__";
   const isTeam = filter === "__team__";
@@ -1236,6 +1258,7 @@ async function load() {
   document.getElementById("dashboardView").style.display = isDashboard ? "block" : "none";
   document.getElementById("ideasView").style.display = isIdeas ? "block" : "none";
   document.getElementById("boardView").style.display = isBoard ? "block" : "none";
+  document.getElementById("sprintsView").style.display = isSprints ? "block" : "none";
   document.getElementById("proposalsView").style.display = isProposals ? "block" : "none";
   document.getElementById("askStatusTabs").style.display = isAsks ? "flex" : "none";
   document.getElementById("tabsLegend").style.display = (isAsks && askStatusFilter === "") ? "block" : "none";
@@ -1272,7 +1295,13 @@ async function load() {
     return;
   }
 
+  if (isSprints) {
+    await loadSprintsView();
+    return;
+  }
+
   if (isBoard) {
+    await refreshSprints();
     await loadBoardView();
     return;
   }
@@ -1283,6 +1312,7 @@ async function load() {
   }
 
   if (!isAsks) return;
+  await refreshSprints();
 
   if (!currentProject) {
     document.getElementById("list").innerHTML = "<p style='color:#5a6472'>Δημιούργησε πρώτα ένα project.</p>";
@@ -1426,6 +1456,7 @@ function renderAskCard(ask) {
           adoLinkHtml(ask) +
           (ask.start_date ? '<span class="chip">▶️ ' + esc(ask.start_date) + '</span>' : "") +
           (ask.section ? '<span class="chip">🗂 ' + esc(ask.section) + '</span>' : "") +
+          sprintChipHtml(ask) +
           (ask.source_status ? '<span class="chip">⏳ ' + esc(ask.source_status) + '</span>' : "") +
           (details.assignmentResolutionRequired ? '<span class="chip warn">🧩 Χρειάζεται ανάθεση σε λογαριασμό</span>' : "") +
           (ask.created_by && !ask.external_import_key ? '<span class="chip">✍️ ' + esc(ask.created_by) + '</span>' : "") +
@@ -1717,6 +1748,7 @@ function showEdit(id) {
           '<option value="done" ' + (ask.status === "done" ? "selected" : "") + '>Ολοκληρώθηκε</option>' +
         '</select>' +
         '<select id="edit-sp-' + ask.id + '" aria-label="Story points">' + storyPointOptions(ask.story_points) + '</select>' +
+        '<select id="edit-sprint-' + ask.id + '" aria-label="Sprint">' + sprintOptions(ask.sprint_id, "Backlog (χωρίς sprint)") + '</select>' +
         '<input id="edit-ado-' + ask.id + '" type="url" value="' + esc(ask.ado_url || "") + '" placeholder="Azure DevOps link (https://...)" style="grid-column:1/-1" />' +
       '</div>' +
       '<div class="actions" style="justify-content:flex-start">' +
@@ -1752,6 +1784,18 @@ async function saveEdit(id) {
     alert(result.error || "Η αποθήκευση απέτυχε.");
     load();
     return;
+  }
+  const newSprint = document.getElementById("edit-sprint-" + id).value;
+  if (newSprint !== String((asksById[id] && asksById[id].sprint_id) || "")) {
+    const sprintResponse = await fetch("/api/asks/" + id + "/sprint", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sprint_id: newSprint || null }),
+    });
+    if (!sprintResponse.ok) {
+      const sprintResult = await sprintResponse.json().catch(function() { return {}; });
+      alert(sprintResult.error || "Η αλλαγή sprint απέτυχε.");
+    }
   }
   await load();
 }
@@ -1809,14 +1853,18 @@ async function renderMembers(message, messageClass) {
     return;
   }
   const members = data.members || [];
-  const statusLabel = { sent: "πρόσκληση στάλθηκε", failed: "η πρόσκληση απέτυχε", pending: "σε αναμονή" };
+  const statusLabel = { accepted: "μπήκε στο Relay", sent: "πρόσκληση στάλθηκε", failed: "η πρόσκληση απέτυχε", pending: "σε αναμονή" };
   let html = '<h2>👥 Ομάδα project</h2><p class="helptext">' + esc(currentProjectName()) +
     ' — τα μέλη βλέπουν όλες τις ενέργειες του project και αλλάζουν status. Μπαίνουν με το email τους (κωδικός 6 ψηφίων).</p>' +
     '<ul class="member-list">' +
     (data.owner_email ? '<li><span>' + esc(data.owner_email) + ' <small>· δημιουργός</small></span></li>' : "") +
     members.map(function(member) {
       return '<li><span>' + esc(member.email) + ' <small>· ' + esc(statusLabel[member.invite_status] || member.invite_status) + '</small></span>' +
-        (data.can_manage ? '<button class="danger-outline" onclick="removeMember(\'' + esc(member.email) + '\')">Αφαίρεση</button>' : "") +
+        (data.can_manage
+          ? '<span class="member-actions">' +
+            (member.invite_status !== "accepted" ? '<button class="secondary" onclick="resendInvite(\'' + esc(member.email) + '\')">Επαναποστολή</button>' : "") +
+            '<button class="danger-outline" onclick="removeMember(\'' + esc(member.email) + '\')">Αφαίρεση</button></span>'
+          : "") +
         '</li>';
     }).join("") +
     (members.length ? "" : '<li><small>Δεν υπάρχουν ακόμα μέλη.</small></li>') +
@@ -1858,6 +1906,12 @@ async function addMembers() {
   if (data.invite_failed.length) parts.push("Η πρόσκληση email απέτυχε για: " + esc(data.invite_failed.join(", ")) + " — έχουν όμως πρόσβαση.");
   const problems = data.invalid.length || data.not_allowed.length || data.invite_failed.length;
   await renderMembers(parts.join("<br>"), problems ? "result-warn" : "result-ok");
+}
+
+async function resendInvite(email) {
+  const res = await fetch("/api/projects/" + encodeURIComponent(currentProject) + "/members/" + encodeURIComponent(email) + "/resend", { method: "POST" });
+  const data = await res.json().catch(function() { return {}; });
+  await renderMembers(res.ok ? "Η πρόσκληση στάλθηκε ξανά στο " + esc(email) : esc(data.error || "Η αποστολή απέτυχε."), res.ok ? "result-ok" : "result-error");
 }
 
 async function removeMember(email) {
@@ -1950,6 +2004,7 @@ const PROJECT_TABS = [
   ["overview", "Επισκόπηση", "__home__"],
   ["asks", "Ενέργειες", "__asks__"],
   ["board", "Πίνακας", "__board__"],
+  ["sprints", "Sprints", "__sprints__"],
   ["proposals", "Προτάσεις", "__proposals__"],
   ["team", "Ομάδα", "__team__"],
   ["ideas", "Ιδέες", "__ideas__"],
@@ -2034,7 +2089,7 @@ async function applyRoute() {
   closeDrawer();
   // Αλλαγή οθόνης/project: καθάρισε το παλιό περιεχόμενο ώστε να μη φανεί για λίγο ξένο project.
   if (previous.view !== route.view || previous.project !== route.project || previous.tab !== route.tab) {
-    ["list", "homeView", "teamView", "dashboardView", "ideasView", "boardView", "proposalsView", "projectsView", "profileView"].forEach(function(id) {
+    ["list", "homeView", "teamView", "dashboardView", "ideasView", "boardView", "sprintsView", "proposalsView", "projectsView", "profileView"].forEach(function(id) {
       document.getElementById(id).innerHTML = "";
     });
   }
@@ -2607,6 +2662,7 @@ async function loadBoardView() {
 
 function boardToolbarHtml() {
   return '<div class="ibox-board-toolbar">' +
+    '<select class="ibox-board-sprint" aria-label="Sprint" onchange="setBoardSprint(this.value)">' + boardSprintOptions() + '</select>' +
     '<div class="ibox-board-group-toggle" role="group" aria-label="Ομαδοποίηση πίνακα">' +
       '<button type="button" class="' + (boardGroupBy === "section" ? "active" : "") + '" onclick="setBoardGroupBy(\'section\')">Ανά φάση</button>' +
       '<button type="button" class="' + (boardGroupBy === "assignee" ? "active" : "") + '" onclick="setBoardGroupBy(\'assignee\')">Ανά άτομο</button>' +
@@ -2623,6 +2679,38 @@ function setBoardGroupBy(mode) {
   boardGroupBy = mode;
   try { localStorage.setItem("relay_board_groupby", mode); } catch (e) {}
   loadBoardView();
+}
+
+let boardSprintFilter = "active"; // active | all | backlog | <sprint id>
+
+function effectiveBoardSprint() {
+  if (boardSprintFilter === "active" && !projectSprints.some(function(sp) { return sp.status === "active"; })) return "all";
+  return boardSprintFilter;
+}
+
+function boardSprintOptions() {
+  const current = effectiveBoardSprint();
+  const option = function(value, label) {
+    return '<option value="' + esc(value) + '"' + (value === current ? " selected" : "") + '>' + esc(label) + '</option>';
+  };
+  let html = "";
+  if (projectSprints.some(function(sp) { return sp.status === "active"; })) html += option("active", "Τρέχον sprint");
+  html += option("all", "Όλα τα sprints") + option("backlog", "Backlog");
+  projectSprints.forEach(function(sp) { html += option(sp.id, sp.name + (sp.status === "closed" ? " (κλειστό)" : "")); });
+  return html;
+}
+
+function setBoardSprint(value) {
+  boardSprintFilter = value;
+  loadBoardView();
+}
+
+function applyBoardSprintFilter(asks) {
+  const f = effectiveBoardSprint();
+  if (f === "all") return asks;
+  if (f === "backlog") return asks.filter(function(ask) { return !ask.sprint_id; });
+  const id = f === "active" ? (projectSprints.find(function(sp) { return sp.status === "active"; }) || {}).id : f;
+  return asks.filter(function(ask) { return ask.sprint_id === id; });
 }
 
 function toggleBoardOnlyMine(checked) {
@@ -2648,7 +2736,7 @@ async function refreshBoard() {
       return;
     }
     asks.forEach(function(ask) { asksById[ask.id] = ask; });
-    renderBoardColumns(columns, asks);
+    renderBoardColumns(columns, applyBoardSprintFilter(asks));
   } catch (error) {
     host.innerHTML = errorBox("Σφάλμα φόρτωσης πίνακα.");
   }
@@ -2948,6 +3036,208 @@ async function deleteBoardColumn(columnId) {
   } catch (error) {
     showToast("Δεν έγινε η διαγραφή.");
   }
+}
+
+// ---------- Sprints: planning, έναρξη/κλείσιμο, ανάθεση asks σε sprint ----------
+let projectSprints = [];
+let sprintsMeta = { can_manage: false, backlog: { ask_count: 0, points_total: 0 } };
+const SPRINT_STATUS_LABELS = { planned: "Προγραμματισμένο", active: "Ενεργό", closed: "Κλειστό" };
+
+async function refreshSprints() {
+  projectSprints = [];
+  if (!currentProject) return;
+  try {
+    const response = await fetch("/api/projects/" + encodeURIComponent(currentProject) + "/sprints");
+    const data = await response.json().catch(function() { return null; });
+    if (response.ok && data) {
+      projectSprints = Array.isArray(data.sprints) ? data.sprints : [];
+      sprintsMeta = { can_manage: !!data.can_manage, backlog: data.backlog || { ask_count: 0, points_total: 0 } };
+    }
+  } catch (error) { /* χωρίς sprints: το UI δουλεύει όπως πριν */ }
+}
+
+function sprintOptions(selected, backlogLabel) {
+  return '<option value="">' + esc(backlogLabel) + '</option>' + projectSprints.filter(function(sp) {
+    return sp.status !== "closed" || sp.id === selected;
+  }).map(function(sp) {
+    return '<option value="' + esc(sp.id) + '"' + (sp.id === selected ? " selected" : "") + '>' + esc(sp.name) + (sp.status === "active" ? " · τρέχον" : "") + '</option>';
+  }).join("");
+}
+
+function sprintChipHtml(ask) {
+  const sprint = ask.sprint_id && projectSprints.find(function(sp) { return sp.id === ask.sprint_id; });
+  return sprint ? '<span class="chip">🏁 ' + esc(sprint.name) + '</span>' : "";
+}
+
+async function loadSprintsView() {
+  const view = document.getElementById("sprintsView");
+  if (!currentProject) {
+    view.innerHTML = "<p style='color:#5a6472'>Δημιούργησε πρώτα ένα project.</p>";
+    return;
+  }
+  view.innerHTML = "<p style='color:#5a6472'>Φόρτωση...</p>";
+  try {
+    const [, asksRes] = await Promise.all([
+      refreshSprints(),
+      fetch("/api/asks?project_id=" + encodeURIComponent(currentProject)),
+    ]);
+    const asks = await asksRes.json().catch(function() { return null; });
+    if (!Array.isArray(asks)) { view.innerHTML = errorBox((asks && asks.error) || "Σφάλμα φόρτωσης sprints."); return; }
+    asks.forEach(function(ask) { asksById[ask.id] = ask; });
+    view.innerHTML = renderSprintsView(asks);
+  } catch (error) {
+    view.innerHTML = errorBox("Σφάλμα φόρτωσης sprints.");
+  }
+}
+
+function sprintAskRow(ask, locked) {
+  const done = ask.status === "done";
+  return '<li class="sprint-ask' + (done ? " is-done" : "") + '">' +
+    '<span class="sprint-ask-title">' + esc(ask.title) + '</span>' +
+    '<span class="sprint-ask-meta">' +
+      (ask.owner ? '<span class="chip">👤 ' + esc(ask.owner) + '</span>' : '<span class="chip">Χωρίς υπεύθυνο</span>') +
+      (ask.story_points ? '<span class="chip sp-chip">⚑ ' + esc(ask.story_points) + ' SP</span>' : "") +
+      adoLinkHtml(ask) +
+    '</span>' +
+    (locked ? "" : '<select aria-label="Sprint" onchange="assignAskToSprint(\'' + esc(ask.id) + '\', this.value)">' +
+      sprintOptions(ask.sprint_id || "", "Backlog") + '</select>') +
+  '</li>';
+}
+
+function sprintCardHtml(sp, asks) {
+  const total = Number(sp.points_total) || 0;
+  const doneSp = Number(sp.points_done) || 0;
+  const pct = total ? Math.round(100 * doneSp / total) : (sp.ask_count ? Math.round(100 * sp.done_count / sp.ask_count) : 0);
+  const dates = (sp.start_date || sp.end_date) ? esc(sp.start_date || "?") + " → " + esc(sp.end_date || "?") : "Χωρίς ημερομηνίες";
+  const mine = asks.filter(function(ask) { return ask.sprint_id === sp.id; });
+  const id = esc(sp.id);
+  let actions = "";
+  if (sprintsMeta.can_manage && sp.status !== "closed") {
+    actions = '<div class="sprint-actions">' +
+      (sp.status === "planned" ? '<button type="button" onclick="startSprint(\'' + id + '\')">Έναρξη</button>' : "") +
+      (sp.status === "active" ? '<button type="button" onclick="openCloseSprint(\'' + id + '\')">Κλείσιμο</button>' : "") +
+      '<button type="button" class="secondary" onclick="openSprintForm(\'' + id + '\')">Επεξεργασία</button>' +
+      '<button type="button" class="danger-outline" onclick="deleteSprint(\'' + id + '\')">Διαγραφή</button>' +
+    '</div>';
+  } else if (sprintsMeta.can_manage) {
+    actions = '<div class="sprint-actions"><button type="button" class="danger-outline" onclick="deleteSprint(\'' + id + '\')">Διαγραφή</button></div>';
+  }
+  return '<section class="sprint-card sprint-' + esc(sp.status) + '">' +
+    '<div class="sprint-head"><h3>' + esc(sp.name) + '</h3><span class="pill sprint-pill-' + esc(sp.status) + '">' + esc(SPRINT_STATUS_LABELS[sp.status] || sp.status) + '</span></div>' +
+    '<p class="helptext">' + dates + (sp.goal ? ' · ' + esc(sp.goal) : "") + '</p>' +
+    '<div class="sprint-progress" role="progressbar" aria-valuenow="' + pct + '" aria-valuemin="0" aria-valuemax="100"><div style="width:' + pct + '%"></div></div>' +
+    '<p class="sprint-stats">' + sp.done_count + '/' + sp.ask_count + ' ενέργειες · ' + doneSp + '/' + total + ' SP (' + pct + '%)</p>' +
+    actions +
+    (mine.length
+      ? '<details class="task-details"' + (sp.status === "active" ? " open" : "") + '><summary>' + mine.length + ' ενέργειες</summary><ul class="sprint-asks">' +
+        mine.map(function(ask) { return sprintAskRow(ask, sp.status === "closed"); }).join("") + '</ul></details>'
+      : '<p class="helptext">Άδειο — πρόσθεσε ενέργειες από το backlog.</p>') +
+  '</section>';
+}
+
+function renderSprintsView(asks) {
+  const backlogAsks = asks.filter(function(ask) { return !ask.sprint_id && ask.status !== "done"; });
+  const backlogPoints = backlogAsks.reduce(function(total, ask) { return total + (Number(ask.story_points) || 0); }, 0);
+  let html = '<div class="toolbar"><h1 class="view-title" id="sprintsTitle" tabindex="-1" style="margin:0">Sprints</h1>' +
+    (sprintsMeta.can_manage ? '<button type="button" onclick="openSprintForm(\'\')">＋ Νέο sprint</button>' : "") + '</div>' +
+    '<p class="helptext">Σχεδίασε τι μπαίνει σε κάθε sprint από το backlog. Κάθε μέλος μπορεί να αλλάζει το sprint μιας ενέργειας· τα sprints τα δημιουργεί και τα ξεκινά ο δημιουργός του project.</p>';
+  if (!projectSprints.length) {
+    html += '<div class="empty-state">Δεν υπάρχουν ακόμα sprints' + (sprintsMeta.can_manage ? " — φτιάξε το πρώτο." : ".") + '</div>';
+  }
+  html += projectSprints.map(function(sp) { return sprintCardHtml(sp, asks); }).join("");
+  html += '<section class="sprint-card"><div class="sprint-head"><h3>Backlog</h3></div>' +
+    '<p class="sprint-stats">' + backlogAsks.length + ' ενέργειες · ' + backlogPoints + ' SP</p>' +
+    (backlogAsks.length
+      ? '<ul class="sprint-asks">' + backlogAsks.map(function(ask) { return sprintAskRow(ask, false); }).join("") + '</ul>'
+      : '<p class="helptext">Το backlog είναι άδειο.</p>') +
+  '</section>';
+  return html;
+}
+
+async function sprintRequest(url, method, payload) {
+  const response = await fetch(url, {
+    method: method,
+    headers: { "content-type": "application/json" },
+    body: payload ? JSON.stringify(payload) : undefined,
+  });
+  const data = await response.json().catch(function() { return {}; });
+  if (!response.ok) throw new Error(data.error || "Η ενέργεια απέτυχε.");
+  return data;
+}
+
+function sprintsUrl(id) {
+  return "/api/projects/" + encodeURIComponent(currentProject) + "/sprints" + (id ? "/" + encodeURIComponent(id) : "");
+}
+
+async function assignAskToSprint(askId, sprintId) {
+  try {
+    await sprintRequest("/api/asks/" + encodeURIComponent(askId) + "/sprint", "POST", { sprint_id: sprintId || null });
+  } catch (error) { showToast(error.message); }
+  await loadSprintsView();
+}
+
+function openSprintForm(id) {
+  const sp = id ? projectSprints.find(function(item) { return item.id === id; }) : null;
+  openModal('<h2>' + (sp ? "Επεξεργασία sprint" : "Νέο sprint") + '</h2>' +
+    '<label for="sprintName"><b>Όνομα</b></label><input id="sprintName" maxlength="80" value="' + esc(sp ? sp.name : "") + '" placeholder="π.χ. Sprint 1" />' +
+    '<label for="sprintGoal"><b>Στόχος</b> (προαιρετικό)</label><input id="sprintGoal" maxlength="300" value="' + esc(sp && sp.goal ? sp.goal : "") + '" />' +
+    '<div class="row"><div style="flex:1;min-width:140px"><label for="sprintStart"><b>Έναρξη</b></label><input id="sprintStart" type="date" value="' + esc(sp && sp.start_date ? sp.start_date : "") + '" /></div>' +
+    '<div style="flex:1;min-width:140px"><label for="sprintEnd"><b>Λήξη</b></label><input id="sprintEnd" type="date" value="' + esc(sp && sp.end_date ? sp.end_date : "") + '" /></div></div>' +
+    '<p id="sprintFormMsg" class="result-error"></p>' +
+    '<div class="modal-actions"><button class="secondary" onclick="closeModal()">Άκυρο</button>' +
+    '<button onclick="saveSprint(\'' + esc(id) + '\')">Αποθήκευση</button></div>');
+}
+
+async function saveSprint(id) {
+  const payload = {
+    name: document.getElementById("sprintName").value,
+    goal: document.getElementById("sprintGoal").value,
+    start_date: document.getElementById("sprintStart").value,
+    end_date: document.getElementById("sprintEnd").value,
+  };
+  try {
+    await sprintRequest(sprintsUrl(id), id ? "PUT" : "POST", payload);
+  } catch (error) {
+    document.getElementById("sprintFormMsg").textContent = error.message;
+    return;
+  }
+  closeModal();
+  await loadSprintsView();
+}
+
+async function startSprint(id) {
+  try { await sprintRequest(sprintsUrl(id), "PUT", { status: "active" }); }
+  catch (error) { showToast(error.message); }
+  await loadSprintsView();
+}
+
+function openCloseSprint(id) {
+  const open = projectSprints.filter(function(sp) { return sp.id !== id && sp.status !== "closed"; });
+  openModal('<h2>Κλείσιμο sprint</h2>' +
+    '<p class="helptext">Οι ολοκληρωμένες ενέργειες μένουν στο sprint. Πού να πάνε οι υπόλοιπες;</p>' +
+    '<select id="sprintMoveTo"><option value="">Πίσω στο backlog</option>' +
+    open.map(function(sp) { return '<option value="' + esc(sp.id) + '">' + esc(sp.name) + '</option>'; }).join("") + '</select>' +
+    '<p id="sprintFormMsg" class="result-error"></p>' +
+    '<div class="modal-actions"><button class="secondary" onclick="closeModal()">Άκυρο</button>' +
+    '<button onclick="confirmCloseSprint(\'' + esc(id) + '\')">Κλείσιμο sprint</button></div>');
+}
+
+async function confirmCloseSprint(id) {
+  try {
+    await sprintRequest(sprintsUrl(id), "PUT", { status: "closed", move_unfinished_to: document.getElementById("sprintMoveTo").value || null });
+  } catch (error) {
+    document.getElementById("sprintFormMsg").textContent = error.message;
+    return;
+  }
+  closeModal();
+  await loadSprintsView();
+}
+
+async function deleteSprint(id) {
+  if (!confirm("Διαγραφή sprint; Οι ενέργειες του γυρνούν στο backlog.")) return;
+  try { await sprintRequest(sprintsUrl(id), "DELETE"); }
+  catch (error) { showToast(error.message); }
+  await loadSprintsView();
 }
 
 // ---------- Προτάσεις (Step 7): λίστα των Copilot/MCP drafts, read-only — άνοιγμα στη σελίδα έγκρισης ----------

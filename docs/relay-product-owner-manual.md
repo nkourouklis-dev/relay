@@ -1,131 +1,131 @@
 # Relay — Οδηγός Product Owner
 
-*Snapshot κατάστασης: 6 Σεπτεμβρίου 2026, βάσει του κώδικα στο `relay.zip`. Αυτό το αρχείο είναι η "πηγή αλήθειας" για το πού βρίσκεται το προϊόν — ενημέρωσέ το (ή ζήτα μου να το ενημερώσω) μετά από κάθε ουσιαστική αλλαγή.*
+*Κατάσταση: 8 Οκτωβρίου 2026. Αυτό το αρχείο είναι η «πηγή αλήθειας» για το πού βρίσκεται το προϊόν — ενημερώνεται μετά από κάθε ουσιαστική αλλαγή (βλ. Changelog στο τέλος).*
 
 ---
 
-## 1. One-line pitch
+## 1. Τι είναι
 
-Project tracking που ζει μόνο του: στέλνεις email ή κάνεις paste κείμενο, και το Relay μετατρέπει τις δεσμεύσεις σε tracked λίστα «ποιος-χρωστάει-τι-μέχρι-πότε», με dashboard, AI insights και exports.
+Το Relay είναι το εσωτερικό εργαλείο της ΚΑΥΚΑΣ για την παρακολούθηση της δουλειάς ενός project: ποιος κάνει τι, μέχρι πότε, σε ποιο sprint και με πόσα story points. Οι ενέργειες (asks) μπορούν να γεννιούνται από email, από επικόλληση κειμένου (πρακτικά, chat), από το Microsoft Copilot ή με το χέρι, και η ομάδα τις βλέπει, τις αναλαμβάνει και τις κινεί σε ένα Kanban board.
 
-## 2. Στόχος χρήστη (target user)
-
-Solo PM ή μικρή ομάδα που θέλει accountability tracking χωρίς να αλλάξει τον τρόπο που ήδη επικοινωνεί (email/chat) — δεν χρειάζεται manual logging σε board.
+**Χρήστες:** ομάδες project (ΚΑΥΚΑΣ και εξωτερικοί συνεργάτες όπως η Netcompany). **Πρόσβαση:** web και κινητό (PWA).
 
 ---
 
-## 3. Λειτουργική κατάσταση σήμερα (τι δουλεύει live)
+## 2. Λειτουργική κατάσταση
 
 | Δυνατότητα | Κατάσταση | Σημείωση |
 |---|---|---|
-| Capture-by-email | ✅ Live | Cloudflare Email Routing → Worker → postal-mime → AI extraction |
-| Paste-to-extract με preview | ✅ Live | `/api/capture/preview` → επιβεβαίωση owner → `/api/capture/commit` |
-| AI εξαγωγή asks | ✅ Live | Workers AI (llama-3.3-70b), με heuristic fallback χωρίς AI binding |
-| Dashboard + charts | ✅ Live | Chart.js: donut status + bar ανά owner |
-| AI Executive Summary | ✅ Live | Με weekly filter option |
-| AI Insights (overdue/blocked/unassigned) | ✅ Live | |
-| Microsoft Copilot Studio (MCP) | 🟡 Κώδικας έτοιμος — εκκρεμούν Entra app registrations, migrations και pilot deploy | User-scoped tools για projects/asks, transcript preview, assignments και authenticated Relay approval. Graph/automatic meeting retrieval δεν περιλαμβάνεται ακόμη. |
-| Excel export | ✅ Live | 4-sheet `.xlsx` μέσω SheetJS |
-| PPT export | ✅ Live | 5-slide `.pptx` μέσω PptxGenJS |
-| Login (magic link, email-based) | ✅ Live | Better Auth + Resend |
-| Route protection (auth guards) | ✅ Live | Read/write στα asks/projects/dashboard απαιτούν session |
-| Περιορισμός login σε `@kafkas.gr` (+ ρητές εξαιρέσεις `ALLOWED_EMAILS`) | 🟡 Υλοποιήθηκε — εκκρεμεί deploy | Φάση 1 (2026-09-17) |
-| Ρόλοι `admin` / `user` | 🟡 Υλοποιήθηκε — εκκρεμεί deploy | Φάση 1. Admin ορίζεται μόνο με SQL (`bootstrap_admin.sql`) |
-| Απομόνωση δεδομένων ανά δημιουργό (server-side) | 🟡 Υλοποιήθηκε — εκκρεμεί deploy | Φάση 1. User βλέπει/αλλάζει μόνο ό,τι δημιούργησε· admin τα πάντα. Αντικαθιστά το παλιό «ownership lock» με email |
-| Overdue auto-detection | ✅ Live | Daily cron 08:00 UTC |
-| Owner = πραγματικός λογαριασμός (όχι free text) | ❌ Δεν έχει γίνει | Phase D του auth plan |
-| Owner picker από project members | 🟡 Υλοποιήθηκε τοπικά — εκκρεμεί deploy | Νέες αναθέσεις ελέγχονται server-side· τα legacy bare names δεν αντιστοιχίζονται αυτόματα. |
-| Claim flow για legacy bare-name owners | ❌ Δεν έχει γίνει | Phase D |
-| Multi-user / shared projects | ✅ Υλοποιήθηκε | Πρόσβαση ανά project μέσω `relay_project_members` και membership checks. |
-| `relay_project_members` table | ✅ Υλοποιήθηκε | Μέλη προστίθενται από project creator ή admin. |
+| Login με email + κωδικό 6 ψηφίων | ✅ Live | Μόνο `@kafkas.gr` + ρητές εξαιρέσεις (`ALLOWED_EMAILS`). Session 90 ημερών· γνωστός browser 180 ημερών |
+| Ρόλοι `admin` / `user` | ✅ Live | Admin ορίζεται μόνο με SQL |
+| Projects με ομάδα, προσκλήσεις με email | ✅ Live | Επαναποστολή πρόσκλησης και ένδειξη «μπήκε στο Relay» |
+| Ενέργειες: υπεύθυνος από μέλη, προθεσμία, status, priority | ✅ Live | |
+| **Story points** (Fibonacci 1–21) | ✅ Live | Σύνολα ανά στήλη Board και ανά sprint |
+| **Link προς Azure DevOps** ανά ενέργεια | ✅ Live | Μόνο σύνδεσμος· όχι συγχρονισμός |
+| **Ανάληψη ενέργειας** από οποιοδήποτε μέλος | ✅ Live | Atomic: αν δύο την πατήσουν μαζί, κερδίζει ο πρώτος |
+| **Board**: Ανά status (Kanban), Ανά φάση, Ανά άτομο | ✅ Live | Drag & drop· στο κινητό επιλογή «Μετακίνηση σε…». Φίλτρο «Μόνο τα δικά μου» |
+| **Sprints**: δημιουργία, έναρξη, κλείσιμο, backlog | ✅ Live | Ένα ενεργό ανά project· ανολοκλήρωτα → επόμενο sprint ή backlog |
+| **Ειδοποιήσεις ανάθεσης** με email | ✅ Live* | *Απαιτούν ρυθμισμένο Resend (βλ. §6) |
+| Υπενθυμίσεις προθεσμιών (digest) | ✅ Live | Cron κάθε 15 λεπτά, ώρα Αθήνας, εργάσιμες |
+| Capture από email / κείμενο με AI | ✅ Live | Workers AI, επιλογή ενεργειών με checkbox πριν αποθηκευτούν |
+| Master Task List import | ✅ Live | Idempotent, δεν δημιουργεί διπλότυπα |
+| Dashboard, AI σύνοψη, insights, export Excel/PPT | ✅ Live | |
+| Ιδέες + XP | ✅ Live | Εσωτερικό κομμάτι της ομάδας |
+| Microsoft Copilot Studio (MCP) | 🟡 Κώδικας έτοιμος | Εκκρεμούν Entra app registrations και pilot (`docs/copilot-integration.md`) |
+| Συγχρονισμός / push προς Azure DevOps | ❌ Δεν υπάρχει | Βλ. §7 |
+| Velocity / burndown | ❌ Δεν υπάρχει | Τα δεδομένα (SP, ημερομηνίες sprint, `closed_at`) υπάρχουν ήδη |
+| Αυτόματο ιστορικό ολοκλήρωσης ενέργειας (ποιος/πότε) | 🟡 Μερικό | Υπάρχει πίνακας `events`, χωρίς οθόνη |
+| Προτιμήσεις ειδοποιήσεων ανά χρήστη | ❌ Δεν υπάρχει | Προς το παρόν όλοι λαμβάνουν ειδοποιήσεις ανάθεσης |
 
 ---
 
-## 4. Το πρόβλημα ταυτότητας (identity problem) — γιατί έχει σημασία
+## 3. Ρόλοι και δικαιώματα
 
-Τα legacy asks κρατούν το παλιό `owner` ως κείμενο, οπότε ένα bare name όπως `Κώστας` δεν έχει ακόμη συνδεθεί με λογαριασμό. Οι νέες αναθέσεις από τις UI φόρμες επιλέγονται πλέον από τα project members και ελέγχονται server-side· η οριστική σύνδεση του `owner_user_id` και το claim flow για legacy names παραμένουν εκκρεμή.
+| Ενέργεια | Μέλος project | Δημιουργός ask | Δημιουργός project | Admin |
+|---|:-:|:-:|:-:|:-:|
+| Βλέπει όλες τις ενέργειες, board, sprints, dashboard | ✅ | ✅ | ✅ | ✅ (όλα τα projects) |
+| Δημιουργεί ενέργεια | ✅ | | | |
+| Αλλάζει status, αναλαμβάνει ελεύθερη ενέργεια | ✅ | | | |
+| Βάζει ενέργεια σε sprint / backlog | ✅ | | | |
+| Αποδεσμεύει ενέργεια | μόνο αν είναι δική του | ✅ | ✅ | ✅ |
+| Επεξεργάζεται / διαγράφει ενέργεια | ❌ | ✅ | ✅ | ✅ |
+| Δημιουργεί/ξεκινά/κλείνει/διαγράφει sprint | ❌ | ❌ | ✅ | ✅ |
+| Προσθέτει/αφαιρεί μέλη, στέλνει προσκλήσεις | ❌ | ❌ | ✅ | ✅ |
+| Προσθέτει εξωτερικό email (εκτός @kafkas.gr) | ❌ | ❌ | ❌ | ✅ |
 
-**Τι μένει, συγκεκριμένα:**
-1. Σύνδεση του επιλεγμένου email με canonical Relay user identity (`owner_user_id`).
-2. Μια απλή οθόνη "claim this ask" ώστε κάποιος να μπορεί να διεκδικήσει παλιά asks με το bare name του.
+Κανόνες που δεν αλλάζουν: το email handler και το `/api/ingest` **δεν** έχουν login· ο υπεύθυνος μιας ενέργειας πρέπει να είναι μέλος του project· δεν γίνεται αυτόματη αντιστοίχιση ασαφών ονομάτων (π.χ. «Κώστας») σε λογαριασμό.
+
+Asks από email/`/api/ingest` και legacy δεδομένα χωρίς δημιουργό φαίνονται μόνο σε admin.
 
 ---
 
-## 4α. Φάση 1 — Ρόλοι & δικαιώματα (τι ισχύει μετά το deploy)
+## 4. Ροή ομάδας (όπως ζητήθηκε για την παράδοση)
 
-**Ποιος μπαίνει:** μόνο emails `@kafkas.gr` και όσα emails είναι ρητά στη λίστα `ALLOWED_EMAILS` (π.χ. προσωπικό email όσο δεν υπάρχει εταιρικό). Η λίστα είναι Cloudflare secret (`npx wrangler secret put ALLOWED_EMAILS`), όχι στο repo. Όλοι οι άλλοι παίρνουν μήνυμα «Η σύνδεση επιτρέπεται μόνο με εταιρικό email @kafkas.gr.» και δεν στέλνεται link. Αν αφαιρεθεί κάποιο email από τη λίστα, το υπάρχον session του σταματά να λειτουργεί.
+1. Ο δημιουργός φτιάχνει το project και **ορίζει την ομάδα** (Ομάδα → emails).
+2. Κάθε μέλος παίρνει **email πρόσκλησης** με link, μπαίνει με email + κωδικό, και βλέπει το project.
+3. Ο δημιουργός ή το PO ορίζει **sprints** και τα γεμίζει από το backlog· τα μέλη βάζουν και τα ίδια ενέργειες σε sprint.
+4. Στον **Πίνακα → Ανά status** τα μέλη **τραβούν** ενέργειες από το «Χωρίς υπεύθυνο» και τις αναλαμβάνουν, βάζουν story points, και τις μετακινούν ως την ολοκλήρωση.
+5. Όποιος αναθέτει σε άλλον ενέργεια, του στέλνει email. Τα story points και το σύνολο ανά sprint δείχνουν τη φόρτωση.
+6. Στο τέλος του sprint ο δημιουργός το **κλείνει** και αποφασίζει πού πάνε τα ανολοκλήρωτα.
 
-**Ρόλοι:**
-| Ρόλος | Τι βλέπει / αλλάζει | Πώς αποκτάται |
+---
+
+## 5. Τεχνικά στοιχεία (σύντομα)
+
+- **Στοίβα:** ένας Cloudflare Worker (`src/index.js`), D1 (SQLite), Workers AI, στατικό frontend σε vanilla JS (`public/index.html`), χωρίς build step. Μπροστά υπάρχει Cloudflare Pages (`pages/`) που δίνει το URL `kafkas-relay.pages.dev`.
+- **Βάση:** πίνακες `projects`, `asks`, `events`, `sources`, `relay_project_members`, `relay_sprints`, `relay_board_columns`, `relay_reminders`, `relay_ask_dependencies`, `relay_ideas*`, καθώς και οι πίνακες auth (`relay_users` κ.ά.). Οι αλλαγές γίνονται **μόνο** με additive migrations (`migrate_*.sql`).
+- Αναλυτική περιγραφή: `docs/relay-architecture-technologies.md`.
+
+---
+
+## 6. Ρυθμίσεις που απαιτούνται (από άνθρωπο)
+
+| Τι | Πού | Σκοπός |
 |---|---|---|
-| `user` (default) | Μόνο projects και asks που **δημιούργησε ο ίδιος** | Αυτόματα στο πρώτο login |
-| `admin` | Τα πάντα, μαζί με τα legacy δεδομένα | Μόνο χειροκίνητα με SQL (`bootstrap_admin.sql`) — δεν υπάρχει τρόπος από το UI ή το API |
+| `RESEND_API_KEY` | Cloudflare secret | Αποστολή login κωδίκων, προσκλήσεων, ειδοποιήσεων ανάθεσης, υπενθυμίσεων |
+| `AUTH_EMAIL_FROM` | `wrangler.jsonc` | Αποστολέας των email |
+| `BETTER_AUTH_SECRET` | Cloudflare secret | Sessions |
+| `ALLOWED_EMAILS` | Cloudflare secret | Εξαιρέσεις εκτός @kafkas.gr |
+| Migrations σε νέα βάση | `schema.sql` ή τα `migrate_*.sql` με τη σειρά | Πριν από deploy, με D1 time-travel bookmark |
 
-**Τι σημαίνει «δικό μου»:** ο **δημιουργός** (`created_by_user_id`), όχι ο owner. Αν ένα ask ανατεθεί (owner) σε κάποιον αλλά το δημιούργησε άλλος, αυτός που το ανέλαβε **δεν** το βλέπει. Ο owner παραμένει ελεύθερο κείμενο (βλ. §4).
-
-**Legacy δεδομένα:**
-- Asks όπου το παλιό `created_by` (email) ταιριάζει με λογαριασμό → συνδέθηκαν αυτόματα σε αυτόν.
-- Όλα τα υπόλοιπα asks και **όλα τα projects που υπήρχαν πριν** (δεν είχαν πληροφορία δημιουργού) → χωρίς δημιουργό → **ορατά μόνο σε admin**.
-- Αν αργότερα συνδεθεί για πρώτη φορά κάποιος που έχει παλιά asks με το email του, ξανατρέχει το `migrate_phase1_backfill_created_by.sql`.
-
-**Γνωστές συνέπειες:**
-- Asks που έρχονται με **email** ή `/api/ingest` δεν έχουν δημιουργό → τα βλέπει **μόνο ο admin** (αυτά τα routes δεν άλλαξαν στη Φάση 1).
-- Ask που δημιουργεί ο admin μέσα σε project ενός user **δεν** εμφανίζεται στον user.
-- Όταν ένας user διαγράφει δικό του project, διαγράφονται όλα τα asks του, ακόμα κι αν κάποια τα δημιούργησε ο admin.
-- Νέος user ξεκινά χωρίς κανένα project — πρέπει να δημιουργήσει δικό του.
+Σημείωση: το Microsoft 365 της ΚΑΥΚΑΣ μπορεί να καθυστερεί ή να αποκλείει emails από νέο αποστολέα. Αν δεν φτάνουν οι ειδοποιήσεις, ζητήστε από το IT allow-list για τον αποστολέα.
 
 ---
 
-## 5. Ανοιχτές αποφάσεις που χρειάζονται εσένα (όχι developer/AI)
+## 7. Ανοιχτές αποφάσεις (χρειάζονται εσένα)
 
-1. **Backfill mapping**: ποια από τα `Κώστας` / `Ελένη` / `Άννα` αντιστοιχούν σε ήδη γνωστά emails, και ποια πρέπει να περιμένουν self-service claim.
-2. **Single-owner vs multi-user projects (Phase E)**: ένα project ανήκει μόνο σε σένα, ή vendor/PM/συνάδελφοι μπαίνουν με δικό τους login στο *ίδιο* project; Αυτό καθορίζει το μέγεθος του Phase D UI.
-3. **Resend vs εναλλακτικός email provider**: αν θες να αλλάξεις από Resend σε κάτι άλλο (π.χ. Postmark).
-4. Αν θες να αφαιρεθεί εντελώς το legacy free-text owner πεδίο μόλις είναι έτοιμο το picker, ή να συνυπάρχουν για μεταβατική περίοδο.
-
----
-
-## 6. Roadmap (σειρά προτεραιότητας)
-
-1. **Phase D** — Owner picker + claim flow (λύνει το βασικό πρόβλημα ταυτότητας).
-2. **Phase E** — Απόφαση + υλοποίηση multi-user projects (αν χρειάζεται).
-3. **Phase F** — Καθαρισμός: αφαίρεση legacy free-text owner UI, ενημέρωση README με το `RESEND_API_KEY` requirement.
-4. Πιθανές μελλοντικές επεκτάσεις (ήδη αναφερόμενες στο README): **R2** για attachments, **Vectorize** για dedupe εγγραφών.
+1. **Azure DevOps:** σήμερα υπάρχει μόνο το link. Επόμενο βήμα θα ήταν κουμπί «Push to ADO» που δημιουργεί work item με Story Points (θέλει ADO organization, project και PAT ως secret). Αμφίδρομος συγχρονισμός δεν συνιστάται χωρίς webhooks και σαφή κανόνα για συγκρούσεις.
+2. **Ποιος ξεκινά/κλείνει sprint:** σήμερα μόνο ο δημιουργός του project ή admin. Αν το PO ή scrum master δεν είναι δημιουργός, θέλει ρόλο «διαχειριστής project».
+3. **Προτιμήσεις ειδοποιήσεων:** opt-out ανά χρήστη και/ή ημερήσια σύνοψη αντί για email ανά ανάθεση.
+4. **Legacy owners** (`Κώστας`, `Ελένη`, `Άννα`): ποιοι αντιστοιχούν σε ποια emails — παραμένει ρητή, χειροκίνητη απόφαση.
 
 ---
 
-## 7. Κανόνες δουλειάς (πώς προχωράμε ασφαλώς)
+## 8. Roadmap (προτεραιότητα)
 
-Αυτοί οι κανόνες προϋπάρχουν στο repo (`AGENTS.md`) και ισχύουν και σε εμένα όταν δουλεύουμε μαζί:
-
-- Δουλεύουμε **μία φάση τη φορά** — όχι συνδυασμός π.χ. Phase D + Phase E σε ένα βήμα.
-- Πριν ξεκινήσουμε μια φάση, σου λέω ρητά τι κάνουμε και τι **δεν** κάνουμε ακόμα.
-- Αν μια φάση έχει "open decision" που χρειάζεται εσένα, σταματάω και ρωτάω — δεν μαντεύω.
-- Ποτέ destructive schema changes (`DROP TABLE`) σε production data — μόνο additive migrations.
-- Ποτέ auth check μπροστά από το inbound email handler ή το `/api/ingest`.
-- Καμία αυτόματη αντιστοίχιση ασαφών ονομάτων (π.χ. bare first name) σε συγκεκριμένο email — αυτό είναι δική σου απόφαση.
+1. Push προς Azure DevOps (αν επιβεβαιωθεί στο §7.1).
+2. Velocity και burndown ανά sprint.
+3. Ρόλος «διαχειριστής project» και προτιμήσεις ειδοποιήσεων.
+4. Ιστορικό ενέργειας (ποιος/πότε άλλαξε τι).
+5. Ενεργοποίηση του Copilot/MCP pilot.
 
 ---
 
-## 8. Πώς θα δουλεύουμε από εδώ και πέρα
+## 9. Κανόνες δουλειάς
 
-Σε κάθε νέα συνεδρία μαζί μου:
-1. Θα ξεκινάω επιβεβαιώνοντας την τρέχουσα κατάσταση (ό,τι είναι στο πιο πρόσφατο zip/κώδικα που μου δίνεις).
-2. Θα δηλώνω ποια φάση/task δουλεύουμε και τι μένει εκτός scope.
-3. Θα ενημερώνω αυτό το manual (ή θα σου λέω τι άλλαξε) ώστε να έχεις πάντα μια ενημερωμένη «πηγή αλήθειας» — ό,τι κάνουμε **από σήμερα, 6/9/2026, και μετά** θα καταγράφεται εδώ.
+- Δουλεύουμε **μία φάση τη φορά** και δηλώνουμε εξαρχής τι **δεν** κάνουμε.
+- Μόνο additive migrations· πριν από remote migration παίρνουμε D1 time-travel bookmark.
+- Καμία authentication στο email handler και στο `/api/ingest`.
+- Καμία αλλαγή frameworks ή build step χωρίς απόφαση.
+- Αν μια φάση έχει ανοιχτή απόφαση, σταματάμε και ρωτάμε.
 
-### Changelog
-- **2026-09-17** — **Ομάδες ανά project + Master Task List import (KAFKAS B2B Go-Live).**
-  - *Ομάδα project:* ο δημιουργός του project ή admin προσθέτει μέλη με emails χωρισμένα με κόμμα· φεύγει πρόσκληση με link. Τα μέλη βλέπουν όλα τα asks του project, δημιουργούν asks και αλλάζουν status· επεξεργασία/διαγραφή ask μόνο ο δημιουργός του ask, ο δημιουργός του project ή admin. Εξωτερικά emails (π.χ. Netcompany) προσθέτει μόνο admin και μπορούν να μπουν μόνο όσο είναι μέλη. Αφαίρεση μέλους = άμεση απώλεια πρόσβασης.
-  - *Import:* κουμπί «Import Master Task List» (επικόλληση/αρχείο .txt/επανάληψη προηγούμενου). Χωρίζεται σε captures ≤ 19.500 χαρακτήρες χωρίς να κόβεται εργασία, κοινό batch id. Idempotent (σταθερό κλειδί ανά group+τίτλο): χωρίς διπλότυπα tasks/υπενθυμίσεις/εξαρτήσεις, κρατά αλλαγές χρηστών, δεν ξανανοίγει ολοκληρωμένα. Πάντα υπάρχει το task «Create the new Production technical and operational account» (Waiting).
-  - *Νέα πεδία ask:* priority, section, start date, λεκτική προθεσμία, go-live blocking, assignees, accountable, source status, λεπτομέρειες (acceptance criteria, notes, reference, πολιτική υπενθυμίσεων). Εξαρτήσεις και υπενθυμίσεις σε νέους πίνακες.
-  - *Υπενθυμίσεις:* υπολογίζονται σε ώρα Αθήνας (εργάσιμες Δευ-Παρ) και στέλνονται ως ένα email-σύνοψη ανά project στον δημιουργό και στα μέλη (cron κάθε 15 λεπτά). Επαναλαμβανόμενες μέχρι να κλείσει το task.
-  - *Προβολές:* Critical Path, KAFKAS Actions, Netcompany Actions, Blocked & Waiting, Overdue, Due next 7 days, Go-Live Readiness (ανά ενότητα), Release 1 Backlog.
-  - *Ασφάλεια:* το Master Task List **δεν** μπαίνει στο git (δημόσιο repo) — κρατιέται στο `data/` (gitignored) και στη βάση. Το HTML στα captures/emails καθαρίζεται σε plain text.
-- **2026-09-17** — **Μεγάλα κείμενα στην Καταγραφή + λογότυπο Καυκάς.** Όριο καταγραφής από 20.000 σε 100.000 χαρακτήρες: το κείμενο αναλύεται σε κομμάτια ~8.000 χαρακτήρων (3 παράλληλα) και τα asks ενώνονται χωρίς διπλότυπα (έως 100). Κείμενο χωρίς ενέργειες δεν βγάζει πια ψευδή asks (ο απλός parser χρησιμοποιείται μόνο αν το AI αποτύχει). Ένα «κακό» item (π.χ. λάθος ημερομηνία) δεν χαλάει πια όλη τη δημιουργία. Ένδειξη προόδου στην ανάλυση. Επίσημο λογότυπο Καυκάς σε σύνδεση, header, sidebar και προεπισκόπηση link.
-- **2026-09-17** — **Γνωστός browser χωρίς κωδικό + εικονίδια/προεπισκόπηση.** Μετά από σύνδεση με κωδικό ο browser θυμάται τον λογαριασμό 180 ημέρες (πίνακας `relay_trusted_devices`, μόνο hash): ακόμα και μετά από αποσύνδεση μπαίνεις μόνο με το email. Νέος browser/συσκευή → κωδικός. Προστέθηκαν favicon, εικονίδια εγκατάστασης (PWA), εικόνα προεπισκόπησης για Teams/Outlook/Viber, ελληνικός τίτλος/περιγραφή. Πολιτική **noindex** (εσωτερικό εργαλείο: όχι σε Google/AI). Λογότυπο Καυκάς: εκκρεμεί αρχείο (`public/brand/kafkas-logo.png` + `tools/generate_brand_assets.py`) — το kafkas.gr μπλοκάρει αυτόματη λήψη.
-- **2026-09-17** — **Σύνδεση που «θυμάται».** Session 90 ημερών στον ίδιο browser, με αυτόματη ανανέωση κάθε μέρα που χρησιμοποιείται (άρα όποιος μπαίνει τακτικά δεν ξαναβάζει κωδικό). Νέος browser/συσκευή ζητά κωδικό μία φορά· τα δεδομένα είναι στον server και φαίνονται ίδια παντού. Admin: `nkourouklis@kafkas.gr` (bootstrap ολοκληρώθηκε).
-- **2026-09-17** — **Login με κωδικό 6 ψηφίων αντί για magic link.** Το Microsoft 365 της Καυκάς δεν παρέδιδε τα emails με link (το Resend τα δεχόταν). Το email πλέον περιέχει μόνο κωδικό (χωρίς link), που πληκτρολογείται στη σελίδα. Κωδικός: 6 ψηφία, 10 λεπτά, 3 προσπάθειες, αποθηκεύεται hashed, max 3 αποστολές/λεπτό. Ίδιοι κανόνες domain/`ALLOWED_EMAILS`. Τα endpoints magic link και τα υπόλοιπα email-otp flows (password reset κ.λπ.) είναι κλειστά. Αν αποτύχει η αποστολή στο Resend, ο χρήστης βλέπει σφάλμα (όχι ψευδή επιτυχία). Υπάρχοντα sessions δεν επηρεάζονται.
-- **2026-09-17** — **Νέο URL: `https://kafkas-relay.pages.dev`** (το `relay.pages.dev` ήταν πιασμένο). Νέο Cloudflare Pages project `kafkas-relay` (φάκελος `pages/`) που προωθεί κάθε request στον ίδιο Worker `relay` μέσω service binding — email capture, cron, D1, AI μένουν ως έχουν. Το παλιό `relay.nkourouklis.workers.dev` ανακατευθύνει (302) στο νέο, εκτός από `/api/ingest`. Όλοι χρειάζεται να ξανακάνουν login μία φορά (τα cookies δένονται στο νέο domain).
-- **2026-09-17** — **Φάση 1: περιορισμός login + ρόλοι + created_by σε λογαριασμό.** Login μόνο `@kafkas.gr` + `ALLOWED_EMAILS`. Νέα στήλη `relay_users.role` (`admin`/`user`). Νέες στήλες `projects.created_by_user_id`, `asks.created_by_user_id`. Server-side έλεγχος πρόσβασης σε όλα τα endpoints projects/asks/dashboard/capture (user: μόνο τα δικά του, admin: όλα). `POST /api/asks/:id/status` δέχεται πλέον μόνο `open`/`accepted`/`done`. `POST /api/asks` απαιτεί project που έχεις πρόσβαση (όχι default `demo`) και τίτλο. UI: Edit/Delete ask και «Διαγραφή project» εμφανίζονται μόνο σε δημιουργό ή admin· το login δείχνει το μήνυμα απόρριψης domain. Αποφάσεις: admin bootstrap με χειροκίνητο SQL· legacy δεδομένα χωρίς αντιστοίχιση → μόνο admin· «δικό μου» = δημιουργός. Δεν άλλαξαν: `/api/ingest`, email handler, extraction, script `db:remote`.
-- **2026-09-06** — Ανάλυση του τρέχοντος `relay.zip`: επιβεβαιώθηκε ότι Phases A–C του auth plan έχουν υλοποιηθεί πλήρως στον κώδικα (users table, Better Auth + magic link, route protection, login UI). Δημιουργήθηκαν τα τρία έγγραφα αναφοράς (αρχιτεκτονική, user manual, product owner manual).
+---
+
+## Changelog
+
+- **2026-10-08** — **Sprints, προσκλήσεις, ειδοποιήσεις.** Πίνακας `relay_sprints` και `asks.sprint_id`· καρτέλα Sprints με backlog, έναρξη/κλείσιμο και μεταφορά ανολοκλήρωτων· φίλτρο sprint στον Πίνακα. Επαναποστολή πρόσκλησης, ένδειξη «μπήκε στο Relay», σύνδεσμος στο project μέσα στο email πρόσκλησης. Email ανάθεσης (δημιουργία, αλλαγή υπευθύνου, μεταφορά στον πίνακα, καταγραφή κειμένου). Νέα εγχειρίδια.
+- **2026-10-08** — **Story points, Azure DevOps link, Ανάληψη, Kanban.** Στήλες `asks.story_points` και `asks.ado_url`· endpoint ανάληψης/αποδέσμευσης· Board «Ανά status» με στήλη «Χωρίς υπεύθυνο», σύνολα SP ανά στήλη, φίλτρο «Μόνο τα δικά μου» και επιλογή μετακίνησης για αφή. Διόρθωση: το κλικ σε κάρτα του Board έβγαζε σφάλμα.
+- **2026-09-28/30** — **Νέα πλοήγηση και Board.** Project-centred shell, Board με drag & drop (ανά φάση/άτομο), checkboxes στην προεπισκόπηση καταγραφής, καρτέλα Προτάσεις (Copilot/MCP), καθαρισμός Ιδεών.
+- **2026-09-17** — **Ομάδες ανά project και Master Task List import**, υπενθυμίσεις (digest), προβολές Critical Path / Netcompany / Overdue κ.ά.
+- **2026-09-17** — **Φάση 1:** login μόνο `@kafkas.gr`, ρόλοι admin/user, δημιουργός ως βάση δικαιωμάτων. Login με κωδικό 6 ψηφίων (αντί magic link), session 90 ημερών, trusted devices 180 ημερών. Νέο URL `kafkas-relay.pages.dev`. Μεγάλα κείμενα καταγραφής (έως 100.000 χαρακτήρες), λογότυπο ΚΑΥΚΑΣ, PWA εικονίδια, πολιτική noindex.
+- **2026-09-06** — Αρχική ανάλυση και έγγραφα αναφοράς. Auth foundation (Better Auth, Resend, route protection).

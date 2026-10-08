@@ -440,6 +440,69 @@ function parseAdoUrl(value) {
   }
 }
 
+// ---------- Sprints ----------
+const SPRINT_STATUSES = ["planned", "active", "closed"];
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+// Επιστρέφει { name, goal, start_date, end_date } (μόνο τα πεδία που στάλθηκαν) ή { error }.
+function parseSprintFields(b) {
+  const out = {};
+  if (b.name !== undefined) {
+    const name = String(b.name || "").trim();
+    if (!name) return { error: "Το όνομα του sprint είναι υποχρεωτικό." };
+    if (name.length > 80) return { error: "Το όνομα του sprint είναι έως 80 χαρακτήρες." };
+    out.name = name;
+  }
+  if (b.goal !== undefined) {
+    const goal = String(b.goal || "").trim();
+    if (goal.length > 300) return { error: "Ο στόχος του sprint είναι έως 300 χαρακτήρες." };
+    out.goal = goal || null;
+  }
+  for (const key of ["start_date", "end_date"]) {
+    if (b[key] === undefined) continue;
+    const value = b[key] ? String(b[key]).trim() : "";
+    if (value && !DATE_PATTERN.test(value)) return { error: "Οι ημερομηνίες πρέπει να είναι της μορφής YYYY-MM-DD." };
+    out[key] = value || null;
+  }
+  return out;
+}
+
+async function getSprint(env, projectId, sprintId) {
+  return env.DB.prepare("SELECT * FROM relay_sprints WHERE id = ? AND project_id = ?").bind(sprintId, projectId).first();
+}
+
+// ---------- Ειδοποιήσεις ανάθεσης ----------
+// Ένα email ανά παραλήπτη με όλα όσα του ανατέθηκαν. Δεν στέλνεται στον ίδιο που κάνει την ανάθεση.
+async function notifyAssignments(env, { project, byEmail, assignments }) {
+  const byRecipient = new Map();
+  const me = String(byEmail || "").toLowerCase();
+  for (const item of assignments) {
+    const to = String(item.owner || "").trim().toLowerCase();
+    if (!to || to === me || !MEMBER_EMAIL_PATTERN.test(to)) continue;
+    if (!byRecipient.has(to)) byRecipient.set(to, []);
+    byRecipient.get(to).push(item);
+  }
+  const appUrl = env.BETTER_AUTH_URL || "";
+  const link = `${appUrl}/#/p/${encodeURIComponent(project.id)}/board`;
+  for (const [to, items] of byRecipient) {
+    const line = (i) => `${i.title}${i.due_date ? ` — λήξη ${i.due_date}` : ""}${i.story_points ? ` · ${i.story_points} SP` : ""}`;
+    await sendAppEmail(env, {
+      kind: "Assignment",
+      to: [to],
+      subject: items.length === 1
+        ? `Relay — Σου ανατέθηκε: ${items[0].title}`
+        : `Relay — Σου ανατέθηκαν ${items.length} ενέργειες (${project.name})`,
+      text:
+        `${byEmail || "Ένας συνάδελφος"} σου ανέθεσε στο project «${project.name}»:\n\n` +
+        items.map((i) => `• ${line(i)}`).join("\n") + `\n\nΆνοιξε το Relay: ${link}`,
+      html:
+        `<p>${escapeHtml(byEmail || "Ένας συνάδελφος")} σου ανέθεσε στο project <b>«${escapeHtml(project.name)}»</b>:</p><ul>` +
+        items.map((i) => `<li>${escapeHtml(line(i))}</li>`).join("") +
+        `</ul><p><a href="${escapeHtml(link)}">Άνοιξε το Relay</a></p>`,
+    });
+  }
+}
+
 // ---------- Board (Step 5): στήλες drag-and-drop ανά project, ομαδοποίηση section/assignee ----------
 // Γενικό, όχι ανά συγκεκριμένο project· ο κάθε project owner/admin διαχειρίζεται τις δικές του στήλες.
 const BOARD_GROUP_BYS = ["section", "assignee"];
@@ -635,7 +698,7 @@ async function sendAppEmail(env, { to, subject, text, html, kind }) {
 }
 
 async function sendProjectInviteEmail(env, { email, project, inviterEmail }) {
-  const appUrl = env.BETTER_AUTH_URL || "";
+  const appUrl = `${env.BETTER_AUTH_URL || ""}/#/p/${encodeURIComponent(project.id)}`;
   const name = project.name;
   return sendAppEmail(env, {
     kind: "Project invite",
@@ -2144,6 +2207,10 @@ export default {
 
       // --- Projects: λίστα ---
       if (path === "/api/projects" && request.method === "GET") {
+        // Το πρώτο άνοιγμα της εφαρμογής από προσκεκλημένο μέλος μετράει ως αποδοχή της πρόσκλησης.
+        await env.DB.prepare(
+          "UPDATE relay_project_members SET invite_status = 'accepted' WHERE email = ? AND invite_status != 'accepted'"
+        ).bind(actor.email).run();
         const { results } = isAdmin(actor)
           ? await env.DB.prepare(
               "SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects ORDER BY created_at"
@@ -2154,6 +2221,130 @@ export default {
                ORDER BY created_at`
             ).bind(actor.id, actor.email).all();
         return json((results || []).map((project) => ({ ...project, can_manage: canManageProject(actor, project) })));
+      }
+
+      // --- Sprints: λίστα με στατιστικά (SP, ολοκληρωμένα) + backlog ---
+      const sprintsMatch = path.match(/^\/api\/projects\/([^/]+)\/sprints$/);
+      if (sprintsMatch && request.method === "GET") {
+        const project = await getAccessibleProject(env, actor, sprintsMatch[1]);
+        if (!project) return json({ error: "Το project δεν βρέθηκε" }, 404);
+        const { results } = await env.DB.prepare(
+          `SELECT s.*,
+                  COUNT(a.id) AS ask_count,
+                  COALESCE(SUM(a.story_points), 0) AS points_total,
+                  COALESCE(SUM(CASE WHEN a.status = 'done' THEN a.story_points ELSE 0 END), 0) AS points_done,
+                  COALESCE(SUM(CASE WHEN a.status = 'done' THEN 1 ELSE 0 END), 0) AS done_count
+           FROM relay_sprints s LEFT JOIN asks a ON a.sprint_id = s.id
+           WHERE s.project_id = ?
+           GROUP BY s.id
+           ORDER BY CASE s.status WHEN 'active' THEN 0 WHEN 'planned' THEN 1 ELSE 2 END, s.start_date, s.created_at`
+        ).bind(project.id).all();
+        const backlog = await env.DB.prepare(
+          `SELECT COUNT(*) AS ask_count, COALESCE(SUM(story_points), 0) AS points_total
+           FROM asks WHERE project_id = ? AND sprint_id IS NULL AND status != 'done'`
+        ).bind(project.id).first();
+        return json({ can_manage: canManageProject(actor, project), sprints: results || [], backlog });
+      }
+
+      // --- Sprints: δημιουργία (δημιουργός project / admin) ---
+      if (sprintsMatch && request.method === "POST") {
+        const project = await getAccessibleProject(env, actor, sprintsMatch[1]);
+        if (!project) return json({ error: "Το project δεν βρέθηκε" }, 404);
+        if (!canManageProject(actor, project)) {
+          return json({ error: "Μόνο ο δημιουργός του project ή admin δημιουργεί sprints." }, 403);
+        }
+        const b = await request.json().catch(() => ({}));
+        const fields = parseSprintFields({ name: b.name, goal: b.goal, start_date: b.start_date, end_date: b.end_date });
+        if (fields.error) return json({ error: fields.error }, 400);
+        if (fields.start_date && fields.end_date && fields.end_date < fields.start_date) {
+          return json({ error: "Η λήξη του sprint δεν μπορεί να είναι πριν την έναρξη." }, 400);
+        }
+        const id = uid();
+        await env.DB.prepare(
+          `INSERT INTO relay_sprints (id, project_id, name, goal, start_date, end_date, status, created_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, 'planned', ?)`
+        ).bind(id, project.id, fields.name, fields.goal ?? null, fields.start_date ?? null, fields.end_date ?? null, actor.id).run();
+        return json({ ok: true, id });
+      }
+
+      // --- Sprints: επεξεργασία / έναρξη / κλείσιμο / διαγραφή ---
+      const sprintMatch = path.match(/^\/api\/projects\/([^/]+)\/sprints\/([^/]+)$/);
+      if (sprintMatch && (request.method === "PUT" || request.method === "DELETE")) {
+        const project = await getAccessibleProject(env, actor, sprintMatch[1]);
+        if (!project) return json({ error: "Το project δεν βρέθηκε" }, 404);
+        if (!canManageProject(actor, project)) {
+          return json({ error: "Μόνο ο δημιουργός του project ή admin διαχειρίζεται sprints." }, 403);
+        }
+        const sprint = await getSprint(env, project.id, sprintMatch[2]);
+        if (!sprint) return json({ error: "Το sprint δεν βρέθηκε" }, 404);
+
+        if (request.method === "DELETE") {
+          await env.DB.batch([
+            env.DB.prepare("UPDATE asks SET sprint_id = NULL WHERE sprint_id = ?").bind(sprint.id),
+            env.DB.prepare("DELETE FROM relay_sprints WHERE id = ?").bind(sprint.id),
+          ]);
+          return json({ ok: true });
+        }
+
+        const b = await request.json().catch(() => ({}));
+        if (sprint.status === "closed") return json({ error: "Ένα κλειστό sprint δεν αλλάζει." }, 400);
+        const fields = parseSprintFields(b);
+        if (fields.error) return json({ error: fields.error }, 400);
+        const start = fields.start_date !== undefined ? fields.start_date : sprint.start_date;
+        const end = fields.end_date !== undefined ? fields.end_date : sprint.end_date;
+        if (start && end && end < start) return json({ error: "Η λήξη του sprint δεν μπορεί να είναι πριν την έναρξη." }, 400);
+
+        const statements = [];
+        const sets = [];
+        const binds = [];
+        for (const [key, value] of Object.entries(fields)) { sets.push(`${key} = ?`); binds.push(value); }
+
+        if (b.status !== undefined) {
+          if (!SPRINT_STATUSES.includes(b.status)) return json({ error: "Μη έγκυρο status sprint." }, 400);
+          if (b.status === "active" && sprint.status !== "active") {
+            const other = await env.DB.prepare(
+              "SELECT name FROM relay_sprints WHERE project_id = ? AND status = 'active' AND id != ?"
+            ).bind(project.id, sprint.id).first();
+            if (other) return json({ error: `Υπάρχει ήδη ενεργό sprint («${other.name}»). Κλείσε το πρώτα.` }, 409);
+          }
+          if (b.status === "planned" && sprint.status === "active") {
+            return json({ error: "Ένα ενεργό sprint δεν γυρνά σε planned." }, 400);
+          }
+          if (b.status === "closed") {
+            // Ανολοκλήρωτα asks: σε άλλο (μη κλειστό) sprint ή πίσω στο backlog.
+            let target = null;
+            if (b.move_unfinished_to) {
+              const next = await getSprint(env, project.id, String(b.move_unfinished_to));
+              if (!next || next.status === "closed" || next.id === sprint.id) return json({ error: "Μη έγκυρο sprint προορισμού." }, 400);
+              target = next.id;
+            }
+            statements.push(env.DB.prepare("UPDATE asks SET sprint_id = ? WHERE sprint_id = ? AND status != 'done'").bind(target, sprint.id));
+            sets.push("closed_at = ?"); binds.push(new Date().toISOString());
+          }
+          sets.push("status = ?"); binds.push(b.status);
+        }
+        if (!sets.length) return json({ ok: true });
+        statements.unshift(env.DB.prepare(`UPDATE relay_sprints SET ${sets.join(", ")} WHERE id = ?`).bind(...binds, sprint.id));
+        await env.DB.batch(statements);
+        return json({ ok: true });
+      }
+
+      // --- Ask -> sprint (ή backlog): κάθε μέλος του project κάνει planning ---
+      if (path.match(/^\/api\/asks\/[^/]+\/sprint$/) && request.method === "POST") {
+        const askId = path.split("/")[3];
+        const b = await request.json().catch(() => ({}));
+        const access = await getAskAccess(env, actor, askId);
+        if (!access.canView) return json({ error: "Το ask δεν βρέθηκε" }, 404);
+        let sprintId = null;
+        if (b.sprint_id) {
+          const sprint = await getSprint(env, access.ask.project_id, String(b.sprint_id));
+          if (!sprint || sprint.status === "closed") return json({ error: "Μη έγκυρο sprint." }, 400);
+          sprintId = sprint.id;
+        }
+        await env.DB.prepare("UPDATE asks SET sprint_id = ? WHERE id = ?").bind(sprintId, askId).run();
+        await env.DB.prepare("INSERT INTO events (id, ask_id, type, note) VALUES (?,?,'updated',?)")
+          .bind(uid(), askId, sprintId ? "Added to sprint" : "Moved to backlog").run();
+        return json({ ok: true, sprint_id: sprintId });
       }
 
       // --- Project members: λίστα ---
@@ -2215,6 +2406,27 @@ export default {
           if (!sent.ok) result.invite_failed.push(email);
         }
         return json(result);
+      }
+
+      // --- Project members: επαναποστολή πρόσκλησης ---
+      const memberResendMatch = path.match(/^\/api\/projects\/([^/]+)\/members\/([^/]+)\/resend$/);
+      if (memberResendMatch && request.method === "POST") {
+        const project = await getAccessibleProject(env, actor, memberResendMatch[1]);
+        if (!project) return json({ error: "Το project δεν βρέθηκε" }, 404);
+        if (!canManageProject(actor, project)) {
+          return json({ error: "Μόνο ο δημιουργός του project ή admin στέλνει προσκλήσεις." }, 403);
+        }
+        const email = decodeURIComponent(memberResendMatch[2]).trim().toLowerCase();
+        const member = await env.DB.prepare(
+          "SELECT invite_status FROM relay_project_members WHERE project_id = ? AND email = ?"
+        ).bind(project.id, email).first();
+        if (!member) return json({ error: "Το μέλος δεν βρέθηκε" }, 404);
+        const sent = await sendProjectInviteEmail(env, { email, project, inviterEmail: actor.email });
+        if (member.invite_status !== "accepted") {
+          await env.DB.prepare("UPDATE relay_project_members SET invite_status = ? WHERE project_id = ? AND email = ?")
+            .bind(sent.ok ? "sent" : "failed", project.id, email).run();
+        }
+        return json(sent.ok ? { ok: true } : { error: "Η αποστολή email απέτυχε (το μέλος έχει ωστόσο πρόσβαση)." }, sent.ok ? 200 : 502);
       }
 
       // --- Project members: αφαίρεση ---
@@ -2411,15 +2623,26 @@ export default {
         const adoUrl = parseAdoUrl(b.ado_url);
         if (adoUrl && adoUrl.error) return json({ error: adoUrl.error }, 400);
 
+        let sprintId = null;
+        if (b.sprint_id) {
+          const sprint = await getSprint(env, project.id, String(b.sprint_id));
+          if (!sprint || sprint.status === "closed") return json({ error: "Μη έγκυρο sprint." }, 400);
+          sprintId = sprint.id;
+        }
+
         const id = uid();
         await env.DB.prepare(
-          `INSERT INTO asks (id, project_id, title, owner, requested_by, created_by, created_by_user_id, due_date, story_points, ado_url)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO asks (id, project_id, title, owner, requested_by, created_by, created_by_user_id, due_date, story_points, ado_url, sprint_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).bind(
           id, project.id, title, owner, b.requested_by || "",
           sessionEmail, actor.id, b.due_date || null,
-          storyPoints ?? null, adoUrl ?? null
+          storyPoints ?? null, adoUrl ?? null, sprintId
         ).run();
+        await notifyAssignments(env, {
+          project, byEmail: sessionEmail,
+          assignments: [{ owner, title, due_date: b.due_date || null, story_points: storyPoints }],
+        });
         return json({ id, ok: true });
       }
 
@@ -2514,6 +2737,12 @@ export default {
         if (storyPoints !== undefined) { sets.push("story_points = ?"); binds.push(storyPoints); }
         if (adoUrl !== undefined) { sets.push("ado_url = ?"); binds.push(adoUrl); }
         await env.DB.prepare(`UPDATE asks SET ${sets.join(", ")} WHERE id = ?`).bind(...binds, askId).run();
+        if (resolvedOwner && resolvedOwner.toLowerCase() !== String(access.ask.owner || "").trim().toLowerCase()) {
+          await notifyAssignments(env, {
+            project, byEmail: sessionEmail,
+            assignments: [{ owner: resolvedOwner, title, due_date: dueDate, story_points: storyPoints }],
+          });
+        }
 
         await env.DB.prepare(
           `INSERT INTO events (id, ask_id, type, note) VALUES (?, ?, 'updated', 'Ask edited by user')`
@@ -2562,6 +2791,10 @@ export default {
           const resolvedOwner = await resolveProjectAssignee(env, project, columnKey, access.ask.owner);
           if (resolvedOwner === null) return json({ error: "Ο owner πρέπει να είναι μέλος του project." }, 400);
           await env.DB.prepare("UPDATE asks SET owner = ? WHERE id = ?").bind(resolvedOwner, askId).run();
+          if (resolvedOwner && resolvedOwner.toLowerCase() !== String(access.ask.owner || "").trim().toLowerCase()) {
+            const moved = await env.DB.prepare("SELECT title, due_date, story_points FROM asks WHERE id = ?").bind(askId).first();
+            if (moved) await notifyAssignments(env, { project, byEmail: sessionEmail, assignments: [{ owner: resolvedOwner, ...moved }] });
+          }
         }
         await env.DB.prepare(
           "INSERT INTO events (id, ask_id, type, note) VALUES (?, ?, 'updated', 'Moved on board')"
@@ -2833,6 +3066,7 @@ export default {
             createdBy: sessionEmail,
             createdByUserId: actor.id,
           });
+          await notifyAssignments(env, { project, byEmail: sessionEmail, assignments: items });
           return json(result);
         } catch (e) {
           return json({ error: e.message || "Capture commit failed" }, 400);
