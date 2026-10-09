@@ -11,6 +11,7 @@ import { normalizeCaptureText, nextOccurrence, runMasterTaskImport } from "./mas
 import { handleRelayMcpRequest, relayOAuthMetadata } from "./relay-mcp.js";
 import { APPROVAL_WINDOW_MS, draftCapabilities, isApprovalActive } from "./approval-window.js";
 import { EMAIL_ACTION_PATH, dispatchDailyDigests, handleEmailAction } from "./daily-digest.js";
+import { createProjectFromTemplate } from "./project-template.js";
 import { ADO_LOCKED_MESSAGE, adoLockedAsk, adoManagedProjectIds, dispatchAdoMirrors, handleAdoRoute, isAdoKey } from "./ado.js";
 
 // ---------- Επιτρεπτά emails (Φάση 1) ----------
@@ -2516,6 +2517,13 @@ export default {
       if (path === "/api/projects" && request.method === "POST") {
         const b = await request.json();
         try {
+          if (b.template_project_id) {
+            const result = await createProjectFromTemplate(env, actor, b, {
+              createProject, getAccessibleProject, isAdmin, isEmailAllowed, sendProjectInviteEmail,
+            });
+            if (result.error) return json({ error: result.error }, result.status || 400);
+            return json({ ...result.project, copied: result.copied });
+          }
           const project = await createProject(env, b.name, actor.id);
           return json(project);
         } catch (e) {

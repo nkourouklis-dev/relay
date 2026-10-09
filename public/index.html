@@ -894,21 +894,70 @@ function renderOwnerPicker() {
   if (picker) picker.innerHTML = ownerOptions(picker.value, false);
 }
 
-async function createProject() {
-  const name = prompt("Όνομα νέου project:");
-  if (!name || !name.trim()) return;
+// Νέο project — κενό ή «από πρότυπο» (π.χ. B2C GR από το B2B GR): Master Task List, φάσεις, μέλη, ADO.
+function createProject() {
+  const ids = Object.keys(projectsById);
+  const options = '<option value="">Κενό project</option>' + ids.map(function(id) {
+    return '<option value="' + esc(id) + '"' + (id === currentProject ? " selected" : "") + '>Από πρότυπο: ' + esc(projectsById[id].name) + '</option>';
+  }).join("");
+  const check = function(id, label, checked) {
+    return '<label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0"><input type="checkbox" id="' + id + '"' + (checked ? " checked" : "") + '> ' + label + '</label>';
+  };
+  openModal('<h2>Νέο project</h2>' +
+    '<label class="detail-field detail-wide"><span>Όνομα</span><input id="np-name" placeholder="π.χ. B2C GR Go-Live" /></label>' +
+    '<label class="detail-field detail-wide" style="margin-top:10px"><span>Ξεκίνα από</span><select id="np-template" onchange="toggleTemplateOptions()">' + options + '</select></label>' +
+    '<div id="np-template-options" style="margin-top:10px">' +
+      '<p class="helptext" style="margin:0 0 4px">Αντιγράφεται η δομή, όχι η πρόοδος: χωρίς υπεύθυνους, ημερομηνίες και status.</p>' +
+      check("np-tasks", "Master Task List (ενέργειες, φάσεις, προτεραιότητες, story points, εξαρτήσεις)", true) +
+      check("np-board", "Στήλες φάσεων του Πίνακα", true) +
+      check("np-members", "Μέλη ομάδας (θα σταλεί νέα πρόσκληση)", false) +
+      (currentRole === "admin"
+        ? '<div style="margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px">' +
+            '<b style="font-size:13px">Σύνδεση με ADO (προαιρετικό)</b>' +
+            '<p class="helptext" style="margin:4px 0 8px">Ίδιο ADO organization/project με το πρότυπο. Δώσε το Area Path ή το Query ID αυτού του rollout· αλλιώς η σύνδεση γίνεται αργότερα από το tab ADO.</p>' +
+            '<label class="detail-field detail-wide"><span>Area Path</span><input id="np-area" placeholder="π.χ. Edison-B2B\\B2C GR" /></label>' +
+            '<label class="detail-field detail-wide" style="margin-top:8px"><span>Shared query ID</span><input id="np-query" placeholder="GUID" /></label>' +
+          '</div>'
+        : "") +
+    '</div>' +
+    '<p id="np-msg" class="result-error"></p>' +
+    '<div class="modal-actions"><button type="button" class="secondary" onclick="closeModal()">Άκυρο</button>' +
+    '<button type="button" id="np-create" onclick="submitNewProject()">Δημιουργία</button></div>');
+  toggleTemplateOptions();
+  document.getElementById("np-name").focus();
+}
 
-  const res = await fetch("/api/projects", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name: name.trim() }),
-  });
-  const result = await res.json();
-  if (!res.ok) {
-    alert(result.error || "Αποτυχία δημιουργίας project");
-    return;
+function toggleTemplateOptions() {
+  document.getElementById("np-template-options").hidden = !document.getElementById("np-template").value;
+}
+
+async function submitNewProject() {
+  const name = document.getElementById("np-name").value.trim();
+  const msg = document.getElementById("np-msg");
+  if (!name) { msg.textContent = "Γράψε όνομα project."; return; }
+  const templateId = document.getElementById("np-template").value;
+  const body = { name: name };
+  if (templateId) {
+    body.template_project_id = templateId;
+    body.copy = {
+      tasks: document.getElementById("np-tasks").checked,
+      board: document.getElementById("np-board").checked,
+      members: document.getElementById("np-members").checked,
+    };
+    const area = document.getElementById("np-area");
+    const query = document.getElementById("np-query");
+    if (area && (area.value.trim() || query.value.trim())) body.ado = { area_path: area.value.trim(), query_id: query.value.trim() };
   }
-
+  const button = document.getElementById("np-create");
+  button.disabled = true;
+  const res = await fetch("/api/projects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const result = await res.json().catch(function() { return {}; });
+  if (!res.ok) { msg.textContent = result.error || "Αποτυχία δημιουργίας project"; button.disabled = false; return; }
+  closeModal();
+  if (result.copied) {
+    const c = result.copied;
+    showToast("Έτοιμο: " + c.tasks + " ενέργειες, " + c.board_columns + " φάσεις, " + c.members + " μέλη" + (c.ado ? ", σύνδεση ADO" : "") + ".");
+  }
   currentProject = result.id;
   localStorage.setItem("relay_project", currentProject);
   await loadProjects();
