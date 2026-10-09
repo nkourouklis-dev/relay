@@ -208,6 +208,8 @@
   .chip-unassigned{background:var(--amberbg);color:var(--amber)}
   .ask-actions{display:flex;flex-direction:column;gap:8px;align-items:stretch;margin-top:10px;min-width:170px}
   .ask-actions select,.ask-actions button{width:100%;min-height:40px}
+  .button-link{display:flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border-radius:10px;background:var(--v);color:#fff;text-decoration:none;font-weight:600;box-shadow:var(--shadow-sm)}
+  .button-link:hover{color:#fff;filter:brightness(1.08)}
   .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
   .detail-field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--grey);font-weight:600}
   .detail-field input,.detail-field select{width:100%;min-width:0;font-weight:400;min-height:40px}
@@ -1557,6 +1559,12 @@ function ownerShortName(owner) {
 // Ορατές ενέργειες αντί για το menu «⋯»: ανάθεση, επόμενο βήμα, λεπτομέρειες.
 function askActionsHtml(ask) {
   const id = esc(ask.id);
+  if (ask.ado_managed) {
+    return '<div class="ask-actions">' +
+      '<a class="button-link" href="' + esc(ask.ado_url || "#") + '" target="_blank" rel="noopener">Άνοιγμα στο ADO ↗</a>' +
+      '<button type="button" class="secondary" onclick="openAskDetail(\'' + id + '\')">Λεπτομέρειες</button>' +
+    '</div>';
+  }
   let primary = "";
   if (ask.status === "done") {
     primary = '<button type="button" class="secondary" onclick="quickUpdate(\'' + id + '\', { status: \'open\' })">Άνοιγμα ξανά</button>';
@@ -1632,20 +1640,24 @@ function takeAsk(id) {
 function openAskDetail(id) {
   const ask = asksById[id];
   if (!ask) return;
-  const manage = canManage(ask);
+  const ado = !!ask.ado_managed;
+  const manage = canManage(ask) && !ado;
   const lock = manage ? "" : " disabled";
+  const adoLock = ado ? " disabled" : "";
   const field = function(label, control) { return '<label class="detail-field"><span>' + label + '</span>' + control + '</label>'; };
   openModal('<h2>Λεπτομέρειες ενέργειας</h2>' +
-    (manage ? "" : '<p class="helptext">🔒 Τον τίτλο και την προθεσμία τα αλλάζει ο δημιουργός ή admin. Μπορείς να αλλάξεις ανάθεση, status, story points, sprint και ADO link.</p>') +
+    (ado
+      ? '<p class="helptext">🔗 Έρχεται από το Azure DevOps: τίτλος, υπεύθυνος, status και προθεσμία αλλάζουν στο ADO και ενημερώνονται εδώ αυτόματα. Εδώ αλλάζεις story points και sprint. <a href="' + esc(ask.ado_url || "#") + '" target="_blank" rel="noopener">Άνοιγμα στο ADO ↗</a></p>'
+      : manage ? "" : '<p class="helptext">🔒 Τον τίτλο και την προθεσμία τα αλλάζει ο δημιουργός ή admin. Μπορείς να αλλάξεις ανάθεση, status, story points, sprint και ADO link.</p>') +
     '<div class="detail-grid">' +
       '<label class="detail-field detail-wide"><span>Τίτλος</span><input id="ad-title" value="' + esc(ask.title) + '"' + lock + ' /></label>' +
-      field("Υπεύθυνος", '<select id="ad-owner">' + ownerOptions(ask.owner || "", true).replace("Χωρίς ανάθεση", "Χωρίς υπεύθυνο") + '</select>') +
-      field("Status", '<select id="ad-status">' +
+      field("Υπεύθυνος", '<select id="ad-owner"' + adoLock + '>' + ownerOptions(ask.owner || "", true).replace("Χωρίς ανάθεση", "Χωρίς υπεύθυνο") + '</select>') +
+      field("Status", '<select id="ad-status"' + adoLock + '>' +
         ["open", "accepted", "done"].map(function(v) { return '<option value="' + v + '"' + (ask.status === v ? " selected" : "") + '>' + STATUS_LABELS[v] + '</option>'; }).join("") + '</select>') +
       field("Story points", '<select id="ad-sp">' + storyPointOptions(ask.story_points) + '</select>') +
       field("Sprint", '<select id="ad-sprint">' + sprintOptions(ask.sprint_id || "", "Backlog (χωρίς sprint)") + '</select>') +
       field("Προθεσμία", '<input id="ad-due" type="date" value="' + esc(ask.due_date || "") + '"' + lock + ' />') +
-      '<label class="detail-field detail-wide"><span>Azure DevOps link</span><input id="ad-ado" type="url" placeholder="https://dev.azure.com/..." value="' + esc(ask.ado_url || "") + '" /></label>' +
+      '<label class="detail-field detail-wide"><span>Azure DevOps link</span><input id="ad-ado" type="url" placeholder="https://dev.azure.com/..." value="' + esc(ask.ado_url || "") + '"' + adoLock + ' /></label>' +
     '</div>' +
     '<p id="ad-msg" class="result-error"></p>' +
     '<div class="modal-actions">' +
@@ -1665,6 +1677,16 @@ async function saveAskDetail(id) {
     const data = await response.json().catch(function() { return {}; });
     if (!response.ok) throw new Error(data.error || "Η αποθήκευση απέτυχε.");
   };
+  // Ενέργεια από ADO: εδώ αλλάζουν μόνο story points και sprint· τα υπόλοιπα ακολουθούν το ADO.
+  if (ask.ado_managed) {
+    const adoPatch = { story_points: value("sp") || null, sprint_id: value("sprint") || null };
+    try { await post("/api/asks/" + encodeURIComponent(id) + "/quick", "POST", adoPatch); }
+    catch (error) { msg.textContent = error.message; return; }
+    applyLocalPatch(ask, adoPatch);
+    closeModal();
+    afterAskChange(adoPatch);
+    return;
+  }
   try {
     if (manage) {
       if (!value("title").trim()) throw new Error("Ο τίτλος είναι υποχρεωτικός.");
@@ -3474,9 +3496,12 @@ function renderAdoConfigForm() {
     '<p>Μόνο ανάγνωση. Το token είναι ρυθμισμένο στο Cloudflare και δεν φαίνεται εδώ.</p>' +
     adoField("adoOrg", "Organization", l.org || "", "π.χ. Kafkas-eCommerce") +
     adoField("adoProject", "ADO project", l.ado_project || "", "π.χ. Edison-B2B") +
+    adoField("adoArea", "Area Path (προαιρετικό — χωρίζει τα rollouts)", l.area_path || "", "π.χ. Edison-B2B\\B2C GR") +
     adoField("adoQuery", "Shared query ID (προαιρετικό, υπερισχύει των φίλτρων)", l.query_id || "", "GUID από το URL του query") +
     adoField("adoTypes", "Τύποι work items", l.work_item_types || "Bug", "Bug,Task") +
     adoField("adoStates", "Εξαίρεση states", l.exclude_states || "Closed,Done,Removed", "") +
+    '<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:8px"><input type="checkbox" id="adoMirror"' + (l.auto_mirror === false ? "" : " checked") + '>' +
+      '<span><b>Το ADO είναι η αλήθεια</b>: κάθε work item γίνεται αυτόματα Ενέργεια (κάθε 15 λεπτά). Τίτλος, status, υπεύθυνος και προθεσμία ακολουθούν το ADO.</span></label>' +
     '<p id="adoFormMsg" style="color:var(--red)"></p>' +
     '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
       '<button type="button" onclick="saveAdoLink()">Αποθήκευση</button>' +
@@ -3503,7 +3528,10 @@ function renderAdoView() {
 
   const data = adoState.data || {};
   const items = adoSorted(data.items || []);
-  const syncLine = data.synced_at ? "Συγχρονισμός " + new Date(data.synced_at).toLocaleTimeString("el-GR", { hour: "2-digit", minute: "2-digit" }) : "";
+  const l = adoState.link;
+  const at = l.auto_mirror && l.last_mirror_at ? l.last_mirror_at : data.synced_at;
+  const syncLine = at ? (l.auto_mirror ? "Αυτόματος συγχρονισμός · τελευταίος " : "Συγχρονισμός ") +
+    new Date(at).toLocaleString("el-GR", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" }) : (l.auto_mirror ? "Αυτόματος συγχρονισμός · δεν έχει τρέξει ακόμα" : "");
   const status = data.error && !items.length
     ? '<span class="pill" style="background:var(--redbg);color:var(--red)">Σφάλμα σύνδεσης</span>'
     : data.stale
@@ -3513,10 +3541,11 @@ function renderAdoView() {
     '<h1 class="view-title" id="adoTitle" tabindex="-1" style="margin:0">ADO</h1>' + status +
     '<span style="color:var(--grey);font-size:12px">' + esc(data.source || (adoState.link.org + "/" + adoState.link.ado_project)) + (syncLine ? " · " + esc(syncLine) : "") + '</span>' +
     '<span style="flex:1"></span>' +
-    '<button type="button" class="secondary" onclick="this.disabled=true;loadAdoView(true)">🔄 Sync τώρα</button>' +
+    '<button type="button" class="secondary" onclick="this.disabled=true;adoSyncNow()">🔄 Sync τώρα</button>' +
     (adoState.canConfigure ? '<button type="button" class="secondary" onclick="adoState.editing=true;renderAdoView()">Ρυθμίσεις</button>' : "") +
     '</div>';
-  const notice = data.error ? '<p class="helptext" style="color:var(--red)">' + esc(data.message || data.error) + '</p>' : "";
+  const notice = (data.error ? '<p class="helptext" style="color:var(--red)">' + esc(data.message || data.error) + '</p>' : "") +
+    (l.auto_mirror && l.last_mirror_error ? '<p class="helptext" style="color:var(--red)">Ο τελευταίος αυτόματος συγχρονισμός απέτυχε: ' + esc(l.last_mirror_error) + '</p>' : "");
   if (data.error && !items.length) { view.innerHTML = toolbar + notice; return; }
 
   const counts = [1, 2, 3, 4].map(function(r) { return items.filter(function(i) { return adoSeverityRank(i.severity) === r; }).length; });
@@ -3557,6 +3586,21 @@ function renderAdoList() {
   }).join("") + '</div>';
 }
 
+async function adoSyncNow() {
+  if (adoState.link && adoState.link.auto_mirror) {
+    try {
+      const response = await fetch(adoUrl("/sync"), { method: "POST" });
+      const data = await response.json().catch(function() { return {}; });
+      if (!response.ok) showToast(data.message || data.error || "Ο συγχρονισμός απέτυχε.");
+      else if (data.throttled) showToast("Μόλις συγχρονίστηκε· ξαναδοκίμασε σε ένα λεπτό.");
+      else showToast("Συγχρονίστηκε: " + data.created + " νέες, " + data.updated + " ενημερώσεις.");
+    } catch (error) {
+      showToast("Ο συγχρονισμός απέτυχε.");
+    }
+  }
+  await loadAdoView(true);
+}
+
 async function adoToAsk(workItemId, button) {
   if (button) button.disabled = true;
   try {
@@ -3578,6 +3622,8 @@ async function saveAdoLink() {
     org: document.getElementById("adoOrg").value,
     ado_project: document.getElementById("adoProject").value,
     query_id: document.getElementById("adoQuery").value,
+    area_path: document.getElementById("adoArea").value,
+    auto_mirror: document.getElementById("adoMirror").checked,
     work_item_types: document.getElementById("adoTypes").value,
     exclude_states: document.getElementById("adoStates").value,
   };

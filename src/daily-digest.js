@@ -7,6 +7,8 @@
 //   (π.χ. Microsoft Safe Links) που ανοίγουν τα links δεν αλλάζουν τίποτα.
 // - Όλες οι ενέργειες είναι idempotent, οπότε δεν χρειάζεται πίνακας «χρησιμοποιημένων» tokens.
 
+import { ADO_LOCKED_MESSAGE, adoLockedAsk } from "./ado.js";
+
 const TOKEN_VERSION = "v1";
 const ASK_ACTION_TTL_SECONDS = 3 * 24 * 3600;
 const PREF_ACTION_TTL_SECONDS = 90 * 24 * 3600;
@@ -122,10 +124,12 @@ export function buildDigestEmail({ email, today, own, free, links, appUrl, unsub
   const textLine = (a) => `• ${a.title} — ${dueLabel(a.due_date, today)} · ${a.project_name}`;
   const text =
     `Καλημέρα! Αυτά είναι στο όνομά σου:\n\n` +
-    own.map((a) => `${textLine(a)}\n  Έγινε: ${links[a.id].done}\n  Αύριο: ${links[a.id].snooze}`).join("\n") +
+    own.map((a) => links[a.id].ado
+      ? `${textLine(a)}\n  ADO: ${links[a.id].ado}`
+      : `${textLine(a)}\n  Έγινε: ${links[a.id].done}\n  Αύριο: ${links[a.id].snooze}`).join("\n") +
     (free.length
       ? `\n\nΕλεύθερες ενέργειες στα projects σου:\n` +
-        free.map((a) => `${textLine(a)}\n  Ανάληψη: ${links[a.id].claim}`).join("\n")
+        free.map((a) => `${textLine(a)}\n  ${links[a.id].ado ? `ADO: ${links[a.id].ado}` : `Ανάληψη: ${links[a.id].claim}`}`).join("\n")
       : "") +
     `\n\nΆνοιξε το Relay: ${appUrl}\n\nΔεν θέλεις αυτό το email; ${unsubscribeUrl}`;
 
@@ -137,11 +141,12 @@ export function buildDigestEmail({ email, today, own, free, links, appUrl, unsub
       `${esc(dueLabel(a.due_date, today))} · ${esc(a.project_name)}</div>` +
       `<div style="margin-top:6px">${buttons}</div></td></tr>`;
   };
-  const ownRows = own.map((a) => card(a,
+  const adoButton = (a) => button(links[a.id].ado, "Άνοιγμα στο ADO ↗");
+  const ownRows = own.map((a) => card(a, links[a.id].ado ? adoButton(a) :
     button(links[a.id].done, "✔ Έγινε", COLORS.ok) +
     button(links[a.id].snooze, a.due_date <= today ? "⏭ Αύριο" : "⏭ +1 ημέρα", COLORS.muted)
   )).join("");
-  const freeRows = free.map((a) => card(a, button(links[a.id].claim, "🙋 Ανάληψη"))).join("");
+  const freeRows = free.map((a) => card(a, links[a.id].ado ? adoButton(a) : button(links[a.id].claim, "🙋 Ανάληψη"))).join("");
 
   const html =
     `<div style="background:${COLORS.bg};padding:24px 12px;font-family:Segoe UI,Arial,sans-serif">` +
@@ -161,6 +166,11 @@ export function buildDigestEmail({ email, today, own, free, links, appUrl, unsub
 }
 
 // ---------- Αποστολή (cron) ----------
+// Ενέργειες από ADO: τα κουμπιά ανοίγουν το work item στο ADO (εκεί αλλάζει η κατάσταση).
+const ADO_FLAG_SQL = `a.ado_url,
+  CASE WHEN a.external_import_key LIKE 'ado:%' AND EXISTS (
+    SELECT 1 FROM relay_ado_links l WHERE l.project_id = a.project_id AND l.auto_mirror = 1
+  ) THEN 1 ELSE 0 END AS ado_managed`;
 // deps: { sendEmail(env, msg) -> { ok }, isAllowed(env, email) -> bool }
 export async function dispatchDailyDigests(env, now = new Date(), deps) {
   const clock = athensClock(now);
@@ -172,7 +182,8 @@ export async function dispatchDailyDigests(env, now = new Date(), deps) {
   const today = clock.date;
   const appUrl = env.BETTER_AUTH_URL || "";
   const { results } = await env.DB.prepare(
-    `SELECT a.id, a.title, a.due_date, lower(trim(a.owner)) AS owner_email, a.project_id, p.name AS project_name
+    `SELECT a.id, a.title, a.due_date, lower(trim(a.owner)) AS owner_email, a.project_id, p.name AS project_name,
+            ${ADO_FLAG_SQL}
      FROM asks a JOIN projects p ON p.id = a.project_id
      WHERE COALESCE(a.status, 'open') != 'done'
        AND a.owner LIKE '%@%'
@@ -201,7 +212,7 @@ export async function dispatchDailyDigests(env, now = new Date(), deps) {
 
     const own = rows.slice(0, MAX_OWN_ITEMS);
     const { results: freeRows } = await env.DB.prepare(
-      `SELECT a.id, a.title, a.due_date, a.project_id, p.name AS project_name
+      `SELECT a.id, a.title, a.due_date, a.project_id, p.name AS project_name, ${ADO_FLAG_SQL}
        FROM asks a JOIN projects p ON p.id = a.project_id
        WHERE COALESCE(a.status, 'open') != 'done'
          AND (a.owner IS NULL OR trim(a.owner) = '')
@@ -218,8 +229,8 @@ export async function dispatchDailyDigests(env, now = new Date(), deps) {
       `${appUrl}${EMAIL_ACTION_PATH}?t=${await signActionToken(env.BETTER_AUTH_SECRET, {
         action, email, askId, ttlSeconds: ASK_ACTION_TTL_SECONDS, now: now.getTime(),
       })}`;
-    for (const a of own) links[a.id] = { done: await link("done", a.id), snooze: await link("snooze", a.id) };
-    for (const a of free) links[a.id] = { claim: await link("claim", a.id) };
+    for (const a of own) links[a.id] = a.ado_managed ? { ado: a.ado_url } : { done: await link("done", a.id), snooze: await link("snooze", a.id) };
+    for (const a of free) links[a.id] = a.ado_managed ? { ado: a.ado_url } : { claim: await link("claim", a.id) };
     const unsubscribeUrl = `${appUrl}${EMAIL_ACTION_PATH}?t=${await signActionToken(env.BETTER_AUTH_SECRET, {
       action: "unsub", email, ttlSeconds: PREF_ACTION_TTL_SECONDS, now: now.getTime(),
     })}`;
@@ -304,6 +315,7 @@ async function applyAction(env, { action, email, askId }, today) {
 
   const ask = await loadAsk(env, askId);
   if (!ask) return { error: "Η ενέργεια δεν υπάρχει πια." };
+  if (await adoLockedAsk(env, askId)) return { error: ADO_LOCKED_MESSAGE };
   const owner = String(ask.owner || "").trim().toLowerCase();
   const event = (type, note) => env.DB.prepare("INSERT INTO events (id, ask_id, type, note) VALUES (?,?,?,?)")
     .bind(crypto.randomUUID(), askId, type, note).run();

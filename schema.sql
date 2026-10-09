@@ -314,8 +314,30 @@ CREATE TABLE IF NOT EXISTS relay_ado_links (
   work_item_types     TEXT NOT NULL DEFAULT 'Bug',
   exclude_states      TEXT NOT NULL DEFAULT 'Closed,Done,Removed',
   updated_by_user_id  TEXT REFERENCES relay_users(id),
-  updated_at          TEXT NOT NULL
+  updated_at          TEXT NOT NULL,
+  area_path           TEXT,
+  auto_mirror         INTEGER NOT NULL DEFAULT 1,
+  last_mirror_at      TEXT,
+  last_mirror_error   TEXT,
+  last_mirror_count   INTEGER
 );
+CREATE TABLE IF NOT EXISTS relay_ado_items (
+  project_id      TEXT NOT NULL REFERENCES projects(id),
+  work_item_id    TEXT NOT NULL,
+  ask_id          TEXT REFERENCES asks(id),
+  work_item_type  TEXT,
+  state           TEXT,
+  severity        TEXT,
+  assigned_name   TEXT,
+  assigned_email  TEXT,
+  area_path       TEXT,
+  iteration_path  TEXT,
+  tags            TEXT,
+  changed_at      TEXT,
+  last_seen_at    TEXT NOT NULL,
+  PRIMARY KEY (project_id, work_item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ado_items_ask ON relay_ado_items(ask_id);
 CREATE TABLE IF NOT EXISTS relay_ado_cache (
   project_id    TEXT PRIMARY KEY REFERENCES projects(id),
   payload_json  TEXT NOT NULL,

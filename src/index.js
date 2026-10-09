@@ -11,7 +11,7 @@ import { normalizeCaptureText, nextOccurrence, runMasterTaskImport } from "./mas
 import { handleRelayMcpRequest, relayOAuthMetadata } from "./relay-mcp.js";
 import { APPROVAL_WINDOW_MS, draftCapabilities, isApprovalActive } from "./approval-window.js";
 import { EMAIL_ACTION_PATH, dispatchDailyDigests, handleEmailAction } from "./daily-digest.js";
-import { handleAdoRoute } from "./ado.js";
+import { ADO_LOCKED_MESSAGE, adoLockedAsk, adoManagedProjectIds, dispatchAdoMirrors, handleAdoRoute, isAdoKey } from "./ado.js";
 
 // ---------- Επιτρεπτά emails (Φάση 1) ----------
 // ALLOWED_EMAIL_DOMAIN: π.χ. "kafkas.gr". ALLOWED_EMAILS: ρητές εξαιρέσεις, comma-separated.
@@ -592,12 +592,20 @@ async function getAskAccess(env, actor, askId) {
   return { ask, canView: member, canManage: false };
 }
 
+// Ενέργειες που καθρεφτίζονται από το ADO: τίτλος/status/υπεύθυνος/προθεσμία αλλάζουν μόνο στο ADO.
+async function rejectIfAdoLocked(env, askId) {
+  const locked = await adoLockedAsk(env, askId);
+  return locked ? json({ error: ADO_LOCKED_MESSAGE, ado_url: locked.ado_url || "" }, 409) : null;
+}
+
 async function annotateAskPermissions(env, actor, rows) {
   if (!rows.length) return rows;
   const { results } = await env.DB.prepare("SELECT id, created_by_user_id FROM projects").all();
   const projectOwners = new Map((results || []).map((p) => [p.id, p.created_by_user_id]));
+  const adoProjects = await adoManagedProjectIds(env);
   return rows.map((row) => ({
     ...row,
+    ado_managed: isAdoKey(row.external_import_key) && adoProjects.has(row.project_id),
     can_manage: isAdmin(actor) ||
       (!!row.created_by_user_id && row.created_by_user_id === actor.id) ||
       (!!projectOwners.get(row.project_id) && projectOwners.get(row.project_id) === actor.id),
@@ -2672,6 +2680,8 @@ export default {
         if (!access.canView) {
           return json({ error: "Το ask δεν βρέθηκε" }, 404);
         }
+        const statusLocked = await rejectIfAdoLocked(env, askId);
+        if (statusLocked) return statusLocked;
         await env.DB.prepare("UPDATE asks SET status = ? WHERE id = ?")
           .bind(b.status, askId).run();
         await env.DB.prepare(
@@ -2688,6 +2698,8 @@ export default {
 
         const access = await getAskAccess(env, actor, askId);
         if (!access.canView) return json({ error: "Το ask δεν βρέθηκε" }, 404);
+        const claimLocked = await rejectIfAdoLocked(env, askId);
+        if (claimLocked) return claimLocked;
 
         const me = String(actor.email || "").toLowerCase();
         const current = String(access.ask.owner || "").trim();
@@ -2726,6 +2738,10 @@ export default {
         const b = await request.json().catch(() => ({}));
         const access = await getAskAccess(env, actor, askId);
         if (!access.canView) return json({ error: "Το ask δεν βρέθηκε" }, 404);
+        if (b.owner !== undefined || b.status !== undefined || b.ado_url !== undefined) {
+          const quickLocked = await rejectIfAdoLocked(env, askId);
+          if (quickLocked) return quickLocked;
+        }
         const project = await getProjectById(env, access.ask.project_id);
         const current = await env.DB.prepare("SELECT title, due_date, owner, story_points FROM asks WHERE id = ?").bind(askId).first();
 
@@ -2806,12 +2822,27 @@ export default {
         if (!access.canManage) {
           return json({ error: "Επεξεργασία μόνο από τον δημιουργό του ask, τον δημιουργό του project ή admin." }, 403);
         }
+        const storyPoints = parseStoryPoints(body.story_points);
+        if (storyPoints && storyPoints.error) return json({ error: storyPoints.error }, 400);
+
+        // ADO ενέργεια: δεκτή μόνο αν τα πεδία του ADO μένουν ίδια· αλλάζουν μόνο τα story points.
+        if (await adoLockedAsk(env, askId)) {
+          const cur = await env.DB.prepare("SELECT title, owner, due_date, status FROM asks WHERE id = ?").bind(askId).first();
+          const curStatus = cur.status === "overdue" ? "open" : cur.status;
+          if (title !== cur.title || owner.toLowerCase() !== String(cur.owner || "").toLowerCase() ||
+              (dueDate || null) !== (cur.due_date || null) || status !== curStatus) {
+            return rejectIfAdoLocked(env, askId);
+          }
+          if (storyPoints !== undefined) {
+            await env.DB.prepare("UPDATE asks SET story_points = ? WHERE id = ?").bind(storyPoints, askId).run();
+          }
+          return json({ ok: true, id: askId });
+        }
+
         const project = await getProjectById(env, access.ask.project_id);
         const resolvedOwner = await resolveProjectAssignee(env, project, owner, access.ask.owner);
         if (resolvedOwner === null) return json({ error: "Ο owner πρέπει να είναι μέλος του project." }, 400);
 
-        const storyPoints = parseStoryPoints(body.story_points);
-        if (storyPoints && storyPoints.error) return json({ error: storyPoints.error }, 400);
         const adoUrl = parseAdoUrl(body.ado_url);
         if (adoUrl && adoUrl.error) return json({ error: adoUrl.error }, 400);
 
@@ -2844,6 +2875,8 @@ export default {
         if (!access.canManage) {
           return json({ error: "Διαγραφή μόνο από τον δημιουργό του ask, τον δημιουργό του project ή admin." }, 403);
         }
+        const deleteLocked = await rejectIfAdoLocked(env, askId);
+        if (deleteLocked) return deleteLocked;
 
         await env.DB.batch([
           env.DB.prepare("DELETE FROM events WHERE ask_id = ?").bind(askId),
@@ -2871,6 +2904,8 @@ export default {
         if (b.group_by === "section") {
           await env.DB.prepare("UPDATE asks SET section = ? WHERE id = ?").bind(columnKey, askId).run();
         } else {
+          const moveLocked = await rejectIfAdoLocked(env, askId);
+          if (moveLocked) return moveLocked;
           const project = await getProjectById(env, access.ask.project_id);
           const resolvedOwner = await resolveProjectAssignee(env, project, columnKey, access.ask.owner);
           if (resolvedOwner === null) return json({ error: "Ο owner πρέπει να είναι μέλος του project." }, 400);
@@ -3214,6 +3249,12 @@ export default {
     ctx.waitUntil(
       dispatchDueReminders(env, now).catch((error) => {
         console.log("Reminder dispatch failed", { error: String(error && error.message || error) });
+      })
+    );
+    // Καθρέφτης ADO → Ενέργειες (κάθε 15', πριν το πρωινό email ώστε να είναι φρέσκο).
+    ctx.waitUntil(
+      dispatchAdoMirrors(env, now).catch((error) => {
+        console.log("ADO mirror dispatch failed", { error: String(error && error.message || error) });
       })
     );
     // Προσωπικό πρωινό email «Τα δικά σου σήμερα» (εργάσιμες, 07:00–11:00 ώρα Αθήνας, μία φορά ανά ημέρα).

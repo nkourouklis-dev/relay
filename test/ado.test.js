@@ -85,7 +85,10 @@ const link = (env) => call(env, "PUT", "/api/projects/p1/ado", { org: "Kafkas-eC
 test("parseLinkInput validates org, project, query id and lists", () => {
   assert.deepEqual(parseLinkInput({ org: "Kafkas-eCommerce", ado_project: "Edison-B2B" }), {
     org: "Kafkas-eCommerce", ado_project: "Edison-B2B", query_id: null, work_item_types: "Bug", exclude_states: "Closed,Done,Removed",
+    area_path: null, auto_mirror: 1,
   });
+  assert.equal(parseLinkInput({ org: "o", ado_project: "p", area_path: "Edison-B2B\\B2C GR" }).area_path, "Edison-B2B\\B2C GR");
+  assert.ok(parseLinkInput({ org: "o", ado_project: "p", area_path: "x' OR 1=1" }).error);
   assert.ok(parseLinkInput({ org: "bad/org", ado_project: "x" }).error);
   assert.ok(parseLinkInput({ org: "o", ado_project: "a/b" }).error);
   assert.ok(parseLinkInput({ org: "o", ado_project: "p", query_id: "not-a-guid" }).error);
@@ -184,4 +187,115 @@ test("unlinked project and unknown project are refused", async () => {
   const { env } = setup();
   assert.equal((await call(env, "GET", "/api/projects/p1/ado/items")).status, 409);
   assert.equal((await call(env, "GET", "/api/projects/nope/ado")).status, 404);
+});
+
+// ---------- Καθρέφτης ADO → Ενέργειες ----------
+import { dispatchAdoMirrors, statusFromState } from "../src/ado.js";
+import { dispatchDailyDigests } from "../src/daily-digest.js";
+
+function mirrorMock(items) {
+  const original = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), body: init.body });
+    if (String(url).includes("/_apis/wit/wiql")) return Response.json({ workItems: items.filter((w) => !w.hidden).map((w) => ({ id: w.id })) });
+    if (String(url).includes("/_apis/wit/workitemsbatch")) {
+      const ids = JSON.parse(init.body).ids;
+      return Response.json({ value: items.filter((w) => ids.includes(w.id) && !w.deleted) });
+    }
+    return new Response("{}", { status: 404, headers: { "content-type": "application/json" } });
+  };
+  return { calls, restore: () => { globalThis.fetch = original; } };
+}
+
+const wi = (id, fields, extra = {}) => ({ id, fields: { "System.WorkItemType": "Bug", ...fields }, ...extra });
+
+test("statusFromState maps ADO states to Relay statuses", () => {
+  assert.equal(statusFromState("New"), "open");
+  assert.equal(statusFromState("Active"), "accepted");
+  assert.equal(statusFromState("Resolved"), "accepted");
+  assert.equal(statusFromState("Closed"), "done");
+  assert.equal(statusFromState("Parked", "Closed,Parked"), "done");
+});
+
+test("mirror creates asks from ADO, follows changes, closes deleted, skips already-closed", async () => {
+  const { db, env } = setup();
+  const sent = [];
+  env.RESEND_API_KEY = "x"; env.AUTH_EMAIL_FROM = "Relay <r@test>";
+  const items = [
+    wi(1, { "System.Title": "Cart limit", "System.State": "Active", "Microsoft.VSTS.Common.Severity": "1 - Critical",
+      "System.AssignedTo": { displayName: "E K", uniqueName: "ekareliotis@kafkas.gr" }, "Microsoft.VSTS.Scheduling.DueDate": "2026-10-20T00:00:00Z" }),
+    wi(2, { "System.Title": "Vendor bug", "System.State": "New", "System.AssignedTo": { displayName: "Vendor", uniqueName: "v@netcompany.com" } }),
+    wi(3, { "System.Title": "Old closed", "System.State": "Closed" }),
+  ];
+  let ado = mirrorMock(items);
+  try {
+    await link(env);
+    const r = await dispatchAdoMirrors(env);
+    assert.equal(r.projects[0].created, 2);
+  } finally { ado.restore(); }
+  const one = db.prepare("SELECT * FROM asks WHERE external_import_key LIKE '%#1'").get();
+  assert.deepEqual([one.title, one.status, one.owner, one.priority, one.due_date, one.assignees], ["#1 Cart limit", "accepted", "ekareliotis@kafkas.gr", "critical", "2026-10-20", "E K"]);
+  const two = db.prepare("SELECT * FROM asks WHERE external_import_key LIKE '%#2'").get();
+  assert.deepEqual([two.status, two.owner, two.assignees], ["open", "", "Vendor"]);
+  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM asks WHERE external_import_key LIKE '%#3'").get().c, 0);
+
+  // 2ος γύρος: τίποτα δεν άλλαξε → καμία αλλαγή.
+  ado = mirrorMock(items);
+  try { assert.equal((await dispatchAdoMirrors(env)).projects[0].updated, 0); } finally { ado.restore(); }
+
+  // Το #1 κλείνει, το #2 σβήνεται στο ADO.
+  items[0].fields["System.State"] = "Closed";
+  items[1].hidden = true; items[1].deleted = true;
+  ado = mirrorMock(items);
+  try { await dispatchAdoMirrors(env); } finally { ado.restore(); }
+  assert.equal(db.prepare("SELECT status FROM asks WHERE id = ?").get(one.id).status, "done");
+  assert.equal(db.prepare("SELECT status FROM asks WHERE id = ?").get(two.id).status, "done");
+  assert.ok(db.prepare("SELECT COUNT(*) AS c FROM events WHERE ask_id = ? AND type = 'done'").get(two.id).c >= 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM asks").get().c, 2, "nothing deleted");
+});
+
+test("ADO-mirrored asks are locked in Relay except story points / sprint", async () => {
+  const { db, env } = setup();
+  const ado = mirrorMock([wi(5, { "System.Title": "Locked", "System.State": "New" })]);
+  try { await link(env); await dispatchAdoMirrors(env); } finally { ado.restore(); }
+  const id = db.prepare("SELECT id FROM asks").get().id;
+
+  const listed = await (await call(env, "GET", "/api/asks?project_id=p1")).json();
+  assert.equal(listed[0].ado_managed, true);
+
+  for (const [method, path, body] of [
+    ["POST", `/api/asks/${id}/quick`, { status: "done" }],
+    ["POST", `/api/asks/${id}/status`, { status: "done" }],
+    ["POST", `/api/asks/${id}/claim`, {}],
+    ["DELETE", `/api/asks/${id}`],
+    ["PUT", `/api/asks/${id}`, { title: "changed", owner: "", status: "open" }],
+  ]) {
+    const res = await call(env, method, path, body);
+    assert.equal(res.status, 409, `${method} ${path}`);
+  }
+  assert.equal((await call(env, "POST", `/api/asks/${id}/quick`, { story_points: 5 })).status, 200);
+  assert.equal((await call(env, "PUT", `/api/asks/${id}`, { title: "#5 Locked", owner: "", status: "open", due_date: null, story_points: 8 })).status, 200);
+  assert.equal(db.prepare("SELECT story_points, status FROM asks WHERE id = ?").get(id).story_points, 8);
+
+  // Αποσύνδεση: η ενέργεια μένει και ξεκλειδώνει.
+  await call(env, "DELETE", "/api/projects/p1/ado");
+  assert.equal((await call(env, "POST", `/api/asks/${id}/quick`, { status: "done" })).status, 200);
+});
+
+test("morning email links ADO asks to ADO instead of one-click buttons", async () => {
+  const { db, env } = setup();
+  env.BETTER_AUTH_SECRET = "s"; env.BETTER_AUTH_URL = "https://relay.test";
+  const ado = mirrorMock([wi(9, { "System.Title": "Due bug", "System.State": "Active",
+    "System.AssignedTo": { displayName: "E", uniqueName: "ekareliotis@kafkas.gr" }, "Microsoft.VSTS.Scheduling.DueDate": "2026-10-13T00:00:00Z" })]);
+  try { await link(env); await dispatchAdoMirrors(env); } finally { ado.restore(); }
+  const sent = [];
+  await dispatchDailyDigests(env, new Date("2026-10-13T04:30:00Z"), {
+    sendEmail: async (_e, m) => { sent.push(m); return { ok: true }; }, isAllowed: async () => true,
+  });
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].html, /Άνοιγμα στο ADO/);
+  assert.doesNotMatch(sent[0].html, /✔ Έγινε/);
+  assert.match(sent[0].text, /ADO: https:\/\/ado\.test\/Kafkas-eCommerce\/Edison-B2B\/_workitems\/edit\/9/);
+  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM relay_daily_digests").get().c, 1);
 });
