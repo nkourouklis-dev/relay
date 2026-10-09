@@ -11,6 +11,7 @@ import { normalizeCaptureText, nextOccurrence, runMasterTaskImport } from "./mas
 import { handleRelayMcpRequest, relayOAuthMetadata } from "./relay-mcp.js";
 import { APPROVAL_WINDOW_MS, draftCapabilities, isApprovalActive } from "./approval-window.js";
 import { EMAIL_ACTION_PATH, dispatchDailyDigests, handleEmailAction } from "./daily-digest.js";
+import { handleAdoRoute } from "./ado.js";
 
 // ---------- Επιτρεπτά emails (Φάση 1) ----------
 // ALLOWED_EMAIL_DOMAIN: π.χ. "kafkas.gr". ALLOWED_EMAILS: ρητές εξαιρέσεις, comma-separated.
@@ -2074,6 +2075,14 @@ export default {
       }
       const sessionEmail = session?.user?.email || "";
       const actor = session ? getActor(session) : null;
+
+      // --- Azure DevOps (read-only): ρυθμίσεις, live λίστα, «→ Ενέργεια» — βλ. src/ado.js ---
+      if (actor && path.startsWith("/api/projects/") && /\/ado(\/|$)/.test(path)) {
+        const adoResponse = await handleAdoRoute(request, env, { path, url, actor, sessionEmail }, {
+          json, getAccessibleProject, canManageProject, isAdmin, resolveProjectAssignee, notifyAssignments, uid,
+        });
+        if (adoResponse) return adoResponse;
+      }
 
       // --- Προτάσεις: λίστα των δικών μου drafts (Copilot/MCP) για ένα project — Step 7 ---
       if (path === "/api/mcp-capture-drafts" && request.method === "GET") {

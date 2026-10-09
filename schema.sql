@@ -305,6 +305,23 @@ CREATE TABLE IF NOT EXISTS relay_email_prefs (
   updated_at    TEXT NOT NULL
 );
 
+-- Σύνδεση με Azure DevOps (βλ. migrate_add_ado_links.sql)
+CREATE TABLE IF NOT EXISTS relay_ado_links (
+  project_id          TEXT PRIMARY KEY REFERENCES projects(id),
+  org                 TEXT NOT NULL,
+  ado_project         TEXT NOT NULL,
+  query_id            TEXT,
+  work_item_types     TEXT NOT NULL DEFAULT 'Bug',
+  exclude_states      TEXT NOT NULL DEFAULT 'Closed,Done,Removed',
+  updated_by_user_id  TEXT REFERENCES relay_users(id),
+  updated_at          TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS relay_ado_cache (
+  project_id    TEXT PRIMARY KEY REFERENCES projects(id),
+  payload_json  TEXT NOT NULL,
+  synced_at     TEXT NOT NULL
+);
+
 -- Demo δεδομένα για να δεις κάτι αμέσως
 INSERT INTO projects (id, name, owner_email, inbox_alias)
 VALUES ('demo', 'Demo Project', 'you@example.com', 'demo');

@@ -529,6 +529,7 @@
   <div id="boardView" style="display:none"></div>
   <div id="sprintsView" style="display:none"></div>
   <div id="proposalsView" style="display:none"></div>
+  <div id="adoView" style="display:none"></div>
   <div id="list"></div>
 
   <div id="createSection">
@@ -1269,6 +1270,7 @@ async function load() {
   const isBoard = filter === "__board__";
   const isSprints = filter === "__sprints__";
   const isProposals = filter === "__proposals__";
+  const isAdo = filter === "__ado__";
   const isAsks = filter === "__asks__";
   const isTeam = filter === "__team__";
   const isProjects = filter === "__projects__";
@@ -1285,6 +1287,7 @@ async function load() {
   document.getElementById("boardView").style.display = isBoard ? "block" : "none";
   document.getElementById("sprintsView").style.display = isSprints ? "block" : "none";
   document.getElementById("proposalsView").style.display = isProposals ? "block" : "none";
+  document.getElementById("adoView").style.display = isAdo ? "block" : "none";
   document.getElementById("askStatusTabs").style.display = isAsks ? "flex" : "none";
   document.getElementById("tabsLegend").style.display = (isAsks && askStatusFilter === "") ? "block" : "none";
   document.getElementById("list").style.display = isAsks ? "block" : "none";
@@ -1332,6 +1335,11 @@ async function load() {
 
   if (isProposals) {
     await loadProposalsView();
+    return;
+  }
+
+  if (isAdo) {
+    await loadAdoView();
     return;
   }
 
@@ -2105,6 +2113,7 @@ const PROJECT_TABS = [
   ["board", "Πίνακας", "__board__"],
   ["sprints", "Sprints", "__sprints__"],
   ["proposals", "Προτάσεις", "__proposals__"],
+  ["ado", "ADO", "__ado__"],
   ["team", "Ομάδα", "__team__"],
   ["ideas", "Ιδέες", "__ideas__"],
   ["dashboard", "Dashboard", "__dashboard__"],
@@ -3401,6 +3410,192 @@ function renderProposalCard(draft) {
         ? '<a href="/mcp-approval.html?draft=' + esc(draft.id) + '" target="_blank" rel="noopener">Άνοιγμα ↗</a>'
         : draft.status === "committed" ? "<span>Έγιναν ενέργειες</span>" : "<span>—</span>") +
     '</div></div>';
+}
+
+// ---------- Azure DevOps (read-only): live λίστα + «→ Ενέργεια» — βλ. src/ado.js ----------
+let adoState = { projectId: "", link: null, canConfigure: false, tokenConfigured: false, data: null, query: "", onlyFree: false, editing: false };
+
+function adoUrl(suffix) {
+  return "/api/projects/" + encodeURIComponent(currentProject) + "/ado" + (suffix || "");
+}
+
+async function loadAdoView(refresh) {
+  const view = document.getElementById("adoView");
+  if (!currentProject) { view.innerHTML = "<p style='color:#5a6472'>Δημιούργησε πρώτα ένα project.</p>"; return; }
+  if (adoState.projectId !== currentProject) {
+    adoState = { projectId: currentProject, link: null, canConfigure: false, tokenConfigured: false, data: null, query: "", onlyFree: false, editing: false };
+  }
+  if (!adoState.data) view.innerHTML = "<p style='color:#5a6472'>Φόρτωση...</p>";
+  try {
+    const cfg = await (await fetch(adoUrl())).json();
+    if (cfg.error) { view.innerHTML = errorBox(cfg.error); return; }
+    adoState.link = cfg.link;
+    adoState.canConfigure = cfg.can_configure;
+    adoState.tokenConfigured = cfg.token_configured;
+    if (cfg.link && !adoState.editing) {
+      const response = await fetch(adoUrl("/items") + (refresh ? "?refresh=1" : ""), { cache: "no-store" });
+      adoState.data = await response.json().catch(function() { return { error: "error", message: "Σφάλμα απάντησης." }; });
+    }
+  } catch (error) {
+    adoState.data = { error: "network", message: "Δεν ήταν δυνατή η σύνδεση με το Relay." };
+  }
+  if (filter === "__ado__" && adoState.projectId === currentProject) renderAdoView();
+}
+
+function adoSeverityRank(sev) {
+  const m = String(sev || "").match(/^(\d)/);
+  return m ? Number(m[1]) : 9;
+}
+
+function adoSeverityClass(sev) {
+  return ["", "prio-critical", "prio-high", "prio-medium", "prio-low"][adoSeverityRank(sev)] || "prio-low";
+}
+
+function adoDaysSince(iso) {
+  const t = Date.parse(iso || "");
+  return isNaN(t) ? null : Math.max(0, Math.floor((Date.now() - t) / 86400000));
+}
+
+function adoSorted(items) {
+  return items.slice().sort(function(a, b) {
+    return adoSeverityRank(a.severity) - adoSeverityRank(b.severity) || (adoDaysSince(b.created) || 0) - (adoDaysSince(a.created) || 0);
+  });
+}
+
+function adoField(id, label, value, placeholder) {
+  return '<label style="display:block;margin-bottom:12px;font-size:13px">' + esc(label) +
+    '<input id="' + id + '" value="' + esc(value) + '" placeholder="' + esc(placeholder || "") + '" style="width:100%;margin-top:4px"></label>';
+}
+
+function renderAdoConfigForm() {
+  const l = adoState.link || {};
+  return '<div class="ibox-idea-card" style="max-width:560px">' +
+    '<h4>Σύνδεση με Azure DevOps</h4>' +
+    '<p>Μόνο ανάγνωση. Το token είναι ρυθμισμένο στο Cloudflare και δεν φαίνεται εδώ.</p>' +
+    adoField("adoOrg", "Organization", l.org || "", "π.χ. Kafkas-eCommerce") +
+    adoField("adoProject", "ADO project", l.ado_project || "", "π.χ. Edison-B2B") +
+    adoField("adoQuery", "Shared query ID (προαιρετικό, υπερισχύει των φίλτρων)", l.query_id || "", "GUID από το URL του query") +
+    adoField("adoTypes", "Τύποι work items", l.work_item_types || "Bug", "Bug,Task") +
+    adoField("adoStates", "Εξαίρεση states", l.exclude_states || "Closed,Done,Removed", "") +
+    '<p id="adoFormMsg" style="color:var(--red)"></p>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<button type="button" onclick="saveAdoLink()">Αποθήκευση</button>' +
+      (adoState.link
+        ? '<button type="button" class="secondary" onclick="adoState.editing=false;loadAdoView()">Άκυρο</button>' +
+          '<button type="button" class="secondary" onclick="removeAdoLink()">Αποσύνδεση</button>'
+        : "") +
+    '</div></div>';
+}
+
+function renderAdoView() {
+  const view = document.getElementById("adoView");
+  const head = '<div class="toolbar"><h1 class="view-title" id="adoTitle" tabindex="-1" style="margin:0">ADO</h1></div>';
+  if (!adoState.tokenConfigured) {
+    view.innerHTML = head + '<div class="empty-state">Δεν έχει οριστεί token για το Azure DevOps. Ο διαχειριστής το προσθέτει ως Cloudflare secret <b>ADO_PAT</b> (scope μόνο «Work Items: Read»).</div>';
+    return;
+  }
+  if (!adoState.link || adoState.editing) {
+    view.innerHTML = head + (adoState.canConfigure
+      ? renderAdoConfigForm()
+      : '<div class="empty-state">Το project δεν έχει συνδεθεί ακόμα με ADO. Ζήτησε από τον admin να το συνδέσει.</div>');
+    return;
+  }
+
+  const data = adoState.data || {};
+  const items = adoSorted(data.items || []);
+  const syncLine = data.synced_at ? "Συγχρονισμός " + new Date(data.synced_at).toLocaleTimeString("el-GR", { hour: "2-digit", minute: "2-digit" }) : "";
+  const status = data.error && !items.length
+    ? '<span class="pill" style="background:var(--redbg);color:var(--red)">Σφάλμα σύνδεσης</span>'
+    : data.stale
+      ? '<span class="pill" style="background:var(--redbg);color:var(--red)">Τελευταία γνωστά δεδομένα</span>'
+      : '<span class="pill" style="background:var(--greenbg);color:var(--green)">Συνδεδεμένο</span>';
+  const toolbar = '<div class="toolbar" style="flex-wrap:wrap;gap:8px">' +
+    '<h1 class="view-title" id="adoTitle" tabindex="-1" style="margin:0">ADO</h1>' + status +
+    '<span style="color:var(--grey);font-size:12px">' + esc(data.source || (adoState.link.org + "/" + adoState.link.ado_project)) + (syncLine ? " · " + esc(syncLine) : "") + '</span>' +
+    '<span style="flex:1"></span>' +
+    '<button type="button" class="secondary" onclick="this.disabled=true;loadAdoView(true)">🔄 Sync τώρα</button>' +
+    (adoState.canConfigure ? '<button type="button" class="secondary" onclick="adoState.editing=true;renderAdoView()">Ρυθμίσεις</button>' : "") +
+    '</div>';
+  const notice = data.error ? '<p class="helptext" style="color:var(--red)">' + esc(data.message || data.error) + '</p>' : "";
+  if (data.error && !items.length) { view.innerHTML = toolbar + notice; return; }
+
+  const counts = [1, 2, 3, 4].map(function(r) { return items.filter(function(i) { return adoSeverityRank(i.severity) === r; }).length; });
+  const free = items.filter(function(i) { return !i.ask_id; }).length;
+  const summary = '<p class="helptext">' + items.length + ' ανοικτά' +
+    ["Critical", "High", "Medium", "Low"].map(function(label, i) { return counts[i] ? " · " + counts[i] + " " + label : ""; }).join("") +
+    ' · ' + free + ' χωρίς Ενέργεια στο Relay</p>';
+  const filters = '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">' +
+    '<input type="search" aria-label="Αναζήτηση" placeholder="Αναζήτηση (τίτλος, #id, υπεύθυνος)" value="' + esc(adoState.query) + '" oninput="adoState.query=this.value;renderAdoList()" style="flex:1;min-width:200px">' +
+    '<label style="font-size:13px"><input type="checkbox" ' + (adoState.onlyFree ? "checked" : "") + ' onchange="adoState.onlyFree=this.checked;renderAdoList()"> Μόνο χωρίς Ενέργεια</label></div>';
+  view.innerHTML = toolbar + notice + summary + filters + '<div id="adoList"></div>';
+  renderAdoList();
+}
+
+function renderAdoList() {
+  const box = document.getElementById("adoList");
+  if (!box) return;
+  const q = adoState.query.trim().toLowerCase();
+  const items = adoSorted((adoState.data && adoState.data.items) || []).filter(function(i) {
+    if (adoState.onlyFree && i.ask_id) return false;
+    return !q || ("#" + i.id + " " + i.title + " " + i.assigned_name + " " + i.tags).toLowerCase().indexOf(q) >= 0;
+  });
+  if (!items.length) { box.innerHTML = '<div class="empty-state">Κανένα work item με αυτά τα φίλτρα.</div>'; return; }
+  box.innerHTML = '<div class="ibox-idea-grid">' + items.map(function(i) {
+    const age = adoDaysSince(i.created), idle = adoDaysSince(i.changed);
+    return '<div class="ibox-idea-card">' +
+      '<div class="tag-row"><span class="cat-tag">' + esc(i.type || "Item") + ' #' + esc(i.id) + '</span>' +
+        (i.severity ? '<span class="pill ' + adoSeverityClass(i.severity) + '" style="margin:0">' + esc(i.severity) + '</span>' : "") + '</div>' +
+      '<h4><a href="' + esc(i.url) + '" target="_blank" rel="noopener">' + esc(i.title) + ' ↗</a></h4>' +
+      '<p>' + esc(i.state) + (i.assigned_name ? ' · ' + esc(i.assigned_name) : ' · <b>Χωρίς υπεύθυνο</b>') +
+        (age !== null ? ' · ' + age + ' ημ.' : '') +
+        (idle !== null && idle > 7 ? ' · <span style="color:var(--red)">χωρίς κίνηση ' + idle + ' ημ.</span>' : '') + '</p>' +
+      '<div class="meta-row"><span>' + esc(i.tags || "") + '</span>' +
+        (i.ask_id
+          ? '<a href="' + esc(projectHash(currentProject, "asks")) + '">Ενέργεια ✓</a>'
+          : '<button type="button" onclick="adoToAsk(\'' + esc(i.id) + '\', this)">→ Ενέργεια</button>') +
+      '</div></div>';
+  }).join("") + '</div>';
+}
+
+async function adoToAsk(workItemId, button) {
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch(adoUrl("/items/" + encodeURIComponent(workItemId) + "/ask"), { method: "POST" });
+    const data = await response.json().catch(function() { return {}; });
+    if (!response.ok || !data.ok) throw new Error(data.message || data.error || "Δεν δημιουργήθηκε η ενέργεια.");
+    const item = ((adoState.data && adoState.data.items) || []).find(function(i) { return i.id === workItemId; });
+    if (item) item.ask_id = data.id;
+    showToast(data.existed ? "Υπήρχε ήδη Ενέργεια." : data.owner ? "Έγινε Ενέργεια, με υπεύθυνο " + data.owner + "." : "Έγινε Ενέργεια (χωρίς υπεύθυνο).");
+    renderAdoView();
+  } catch (error) {
+    showToast(error.message);
+    if (button) button.disabled = false;
+  }
+}
+
+async function saveAdoLink() {
+  const body = {
+    org: document.getElementById("adoOrg").value,
+    ado_project: document.getElementById("adoProject").value,
+    query_id: document.getElementById("adoQuery").value,
+    work_item_types: document.getElementById("adoTypes").value,
+    exclude_states: document.getElementById("adoStates").value,
+  };
+  const response = await fetch(adoUrl(), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await response.json().catch(function() { return {}; });
+  if (!response.ok) { document.getElementById("adoFormMsg").textContent = data.error || "Αποτυχία αποθήκευσης."; return; }
+  adoState.editing = false;
+  adoState.data = null;
+  await loadAdoView(true);
+}
+
+async function removeAdoLink() {
+  if (!confirm("Αποσύνδεση του project από το ADO; Οι Ενέργειες που έχουν ήδη δημιουργηθεί μένουν.")) return;
+  await fetch(adoUrl(), { method: "DELETE" });
+  adoState.editing = false;
+  adoState.data = null;
+  adoState.link = null;
+  await loadAdoView();
 }
 
 // ---------- Gamification (server-side, per real user — see relay_gamification) ----------
