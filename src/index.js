@@ -10,6 +10,7 @@ import { setSessionCookie } from "better-auth/cookies";
 import { normalizeCaptureText, nextOccurrence, runMasterTaskImport } from "./master-task-import.js";
 import { handleRelayMcpRequest, relayOAuthMetadata } from "./relay-mcp.js";
 import { APPROVAL_WINDOW_MS, draftCapabilities, isApprovalActive } from "./approval-window.js";
+import { EMAIL_ACTION_PATH, dispatchDailyDigests, handleEmailAction } from "./daily-digest.js";
 
 // ---------- Επιτρεπτά emails (Φάση 1) ----------
 // ALLOWED_EMAIL_DOMAIN: π.χ. "kafkas.gr". ALLOWED_EMAILS: ρητές εξαιρέσεις, comma-separated.
@@ -2043,6 +2044,11 @@ export default {
       return createAuth(env).handler(request);
     }
 
+    // Κουμπιά του πρωινού email: χωρίς session, εξουσιοδότηση μόνο με το υπογεγραμμένο token του συνδέσμου.
+    if (path === EMAIL_ACTION_PATH) {
+      return handleEmailAction(request, env);
+    }
+
     if (path.startsWith("/api/")) {
       const protectedRoute =
         path === "/api/projects" ||
@@ -3199,6 +3205,12 @@ export default {
     ctx.waitUntil(
       dispatchDueReminders(env, now).catch((error) => {
         console.log("Reminder dispatch failed", { error: String(error && error.message || error) });
+      })
+    );
+    // Προσωπικό πρωινό email «Τα δικά σου σήμερα» (εργάσιμες, 07:00–11:00 ώρα Αθήνας, μία φορά ανά ημέρα).
+    ctx.waitUntil(
+      dispatchDailyDigests(env, now, { sendEmail: sendAppEmail, isAllowed: isLoginAllowed }).catch((error) => {
+        console.log("Daily digest dispatch failed", { error: String(error && error.message || error) });
       })
     );
     ctx.waitUntil(

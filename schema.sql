@@ -291,6 +291,20 @@ CREATE TABLE relay_gamification (
   updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Πρωινό προσωπικό email (βλ. migrate_add_daily_digest.sql)
+CREATE TABLE IF NOT EXISTS relay_daily_digests (
+  email        TEXT NOT NULL,
+  digest_date  TEXT NOT NULL,
+  sent_at      TEXT NOT NULL,
+  item_count   INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (email, digest_date)
+);
+CREATE TABLE IF NOT EXISTS relay_email_prefs (
+  email         TEXT PRIMARY KEY,
+  daily_digest  INTEGER NOT NULL DEFAULT 1,
+  updated_at    TEXT NOT NULL
+);
+
 -- Demo δεδομένα για να δεις κάτι αμέσως
 INSERT INTO projects (id, name, owner_email, inbox_alias)
 VALUES ('demo', 'Demo Project', 'you@example.com', 'demo');
