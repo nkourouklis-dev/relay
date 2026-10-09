@@ -627,15 +627,24 @@ const IDEA_STATUSES = [
   "Σε Αναμονή",
 ];
 
-// { idea, canView, canManage } — canView: μέλος/owner project ή δημιουργός/owner της ιδέας.
+// Κεντρικές Ιδέες: ένα κρυφό «σπίτι» (migrate_central_ideas.sql) για ιδέες που δεν αφορούν ένα project.
+// Δεν εμφανίζεται σε λίστες projects και δεν δέχεται ενέργειες.
+const IDEAS_HUB_PROJECT_ID = "relay-ideas-hub";
+
+// Οι Ιδέες είναι εσωτερικές: τις βλέπουν οι χρήστες του domain/εξαιρέσεων και οι admins,
+// όχι εξωτερικοί συνεργάτες που μπαίνουν μόνο μέσω μέλους project.
+function canSeeIdeas(env, actor) {
+  return isAdmin(actor) || isEmailAllowed(env, actor.email);
+}
+
+// { idea, canView, canManage } — canView: εσωτερικός χρήστης· canManage: owner/δημιουργός της ιδέας ή admin.
 async function getIdeaAccess(env, actor, ideaId) {
   const idea = await env.DB.prepare("SELECT * FROM relay_ideas WHERE id = ?").bind(ideaId).first();
   if (!idea) return { idea: null, canView: false, canManage: false };
   if (isAdmin(actor) || idea.owner_user_id === actor.id || idea.created_by_user_id === actor.id) {
     return { idea, canView: true, canManage: true };
   }
-  const project = await getAccessibleProject(env, actor, idea.project_id);
-  return { idea, canView: !!project, canManage: false };
+  return { idea, canView: canSeeIdeas(env, actor), canManage: false };
 }
 
 async function insertIdeaEvent(env, { ideaId, actorUserId, type, fromStatus, toStatus, note }) {
@@ -1378,9 +1387,9 @@ async function createProject(env, name, createdByUserId) {
 
 async function deleteProject(env, projectId) {
   const project = await getProjectById(env, projectId);
-  if (!project) throw new Error("Το project δεν βρέθηκε");
+  if (!project || project.id === IDEAS_HUB_PROJECT_ID) throw new Error("Το project δεν βρέθηκε");
 
-  const countRow = await env.DB.prepare("SELECT COUNT(*) as c FROM projects").first();
+  const countRow = await env.DB.prepare("SELECT COUNT(*) as c FROM projects WHERE id != 'relay-ideas-hub'").first();
   if (countRow && countRow.c <= 1) {
     throw new Error("Δεν μπορείς να διαγράψεις το τελευταίο εναπομείναν project");
   }
@@ -1545,7 +1554,7 @@ function createRelayMcpOperations(env) {
       async listProjects(actor) {
         const { results } = isAdmin(actor)
           ? await env.DB.prepare(
-              "SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects ORDER BY created_at"
+              "SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects WHERE id != 'relay-ideas-hub' ORDER BY created_at"
             ).all()
           : await env.DB.prepare(
               `SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects
@@ -1744,7 +1753,7 @@ async function ingest(env, { projectId, alias, type, sender, subject, body, crea
   let project;
   if (projectId) {
     project = await getProjectById(env, projectId);
-    if (!project) throw new Error("Project not found");
+    if (!project || project.id === IDEAS_HUB_PROJECT_ID) throw new Error("Project not found");
   } else {
     project = await ensureProjectByAlias(env, alias || "inbox");
   }
@@ -2237,7 +2246,7 @@ export default {
         ).bind(actor.email).run();
         const { results } = isAdmin(actor)
           ? await env.DB.prepare(
-              "SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects ORDER BY created_at"
+              "SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects WHERE id != 'relay-ideas-hub' ORDER BY created_at"
             ).all()
           : await env.DB.prepare(
               `SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects
@@ -3018,29 +3027,25 @@ export default {
         return json({ ok: true });
       }
 
-      // --- Ideas: λίστα (scoped στο project/team, όχι δημόσιο) ---
+      // --- Ideas: κεντρική λίστα (όλη η εταιρεία· προαιρετικά φίλτρο project) ---
       if (path === "/api/ideas" && request.method === "GET") {
+        if (!canSeeIdeas(env, actor)) return json({ error: "Οι Ιδέες είναι διαθέσιμες μόνο σε εσωτερικούς χρήστες." }, 403);
         const projectId = url.searchParams.get("project_id");
-        const project = await getAccessibleProject(env, actor, projectId);
-        if (!project) return json({ error: "Project not found" }, 404);
-
         const { results } = await env.DB.prepare(
-          `SELECT i.*, u.email AS owner_email, u.name AS owner_name
-           FROM relay_ideas i JOIN relay_users u ON u.id = i.owner_user_id
-           WHERE i.project_id = ? ORDER BY i.created_at DESC`
-        ).bind(project.id).all();
+          `SELECT i.*, u.email AS owner_email, u.name AS owner_name,
+                  CASE WHEN i.project_id = '${IDEAS_HUB_PROJECT_ID}' THEN NULL ELSE p.name END AS project_name
+           FROM relay_ideas i JOIN relay_users u ON u.id = i.owner_user_id LEFT JOIN projects p ON p.id = i.project_id
+           ${projectId ? "WHERE i.project_id = ?" : ""} ORDER BY i.created_at DESC`
+        ).bind(...(projectId ? [projectId] : [])).all();
         return json(results || []);
       }
 
       // --- Ideas: επισκόπηση ανά status (dashboard-style tally) ---
       if (path === "/api/ideas/summary" && request.method === "GET") {
-        const projectId = url.searchParams.get("project_id");
-        const project = await getAccessibleProject(env, actor, projectId);
-        if (!project) return json({ error: "Project not found" }, 404);
-
+        if (!canSeeIdeas(env, actor)) return json({ error: "Οι Ιδέες είναι διαθέσιμες μόνο σε εσωτερικούς χρήστες." }, 403);
         const { results } = await env.DB.prepare(
-          "SELECT status, COUNT(*) AS count FROM relay_ideas WHERE project_id = ? GROUP BY status"
-        ).bind(project.id).all();
+          "SELECT status, COUNT(*) AS count FROM relay_ideas GROUP BY status"
+        ).all();
         const byStatus = {};
         let total = 0;
         for (const row of results || []) {
@@ -3055,8 +3060,13 @@ export default {
         const b = await request.json().catch(() => ({}));
         const title = String(b.title || "").trim();
         if (!title) return json({ error: "Ο τίτλος είναι υποχρεωτικός" }, 400);
-        const project = await getAccessibleProject(env, actor, b.project_id);
-        if (!project) return json({ error: "Project not found" }, 404);
+        if (!canSeeIdeas(env, actor)) return json({ error: "Οι Ιδέες είναι διαθέσιμες μόνο σε εσωτερικούς χρήστες." }, 403);
+        // Προαιρετικά «σχετίζεται με» ένα project του χρήστη· αλλιώς γενική ιδέα.
+        let project = { id: IDEAS_HUB_PROJECT_ID };
+        if (b.project_id && b.project_id !== IDEAS_HUB_PROJECT_ID) {
+          project = await getAccessibleProject(env, actor, b.project_id);
+          if (!project) return json({ error: "Project not found" }, 404);
+        }
 
         const id = uid();
         await env.DB.prepare(
@@ -3121,9 +3131,7 @@ export default {
 
       // --- Ideas: πρόσφατη δραστηριότητα σε όλο το project (activity ticker) ---
       if (path === "/api/ideas/activity" && request.method === "GET") {
-        const projectId = url.searchParams.get("project_id");
-        const project = await getAccessibleProject(env, actor, projectId);
-        if (!project) return json({ error: "Project not found" }, 404);
+        if (!canSeeIdeas(env, actor)) return json({ error: "Οι Ιδέες είναι διαθέσιμες μόνο σε εσωτερικούς χρήστες." }, 403);
 
         const limit = Math.min(Number(url.searchParams.get("limit")) || 8, 30);
         const { results } = await env.DB.prepare(
@@ -3132,10 +3140,9 @@ export default {
            FROM relay_idea_events e
            JOIN relay_ideas i ON i.id = e.idea_id
            JOIN relay_users u ON u.id = e.actor_user_id
-           WHERE i.project_id = ?
            ORDER BY e.created_at DESC
            LIMIT ?`
-        ).bind(project.id, limit).all();
+        ).bind(limit).all();
         return json(results || []);
       }
 

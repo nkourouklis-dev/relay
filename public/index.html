@@ -430,7 +430,7 @@
     *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
   }
   @media (max-width:900px){.chart-grid{grid-template-columns:minmax(0,1fr);width:100%}.chart-card{width:100%}}
-  @media (max-width:900px){header{padding-left:84px}#app.app-shell{padding-left:28px}.app-sidebar{transform:translateX(-102%);transition:transform .24s ease}.app-sidebar.is-open{transform:translateX(0)}.drawer-backdrop.is-open{display:block;position:fixed;inset:0;background:rgba(21,33,59,.42);z-index:25}.mobile-menu{display:inline-grid;place-items:center;width:44px;padding:0;background:transparent;box-shadow:none;color:var(--v);font-size:20px}.mobile-menu:hover{background:var(--surface-soft);transform:none;box-shadow:none}.mobile-bottom-nav{position:fixed;left:12px;right:12px;bottom:12px;z-index:22;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;padding:6px;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-md)}.mobile-bottom-nav button{background:transparent;color:var(--grey);box-shadow:none;font-size:11px}.mobile-bottom-nav button:hover{color:var(--v);background:var(--surface-soft);transform:none;box-shadow:none}.mobile-bottom-nav button.active{color:var(--v);background:var(--surface-soft);font-weight:700}.mobile-bottom-nav-primary{color:var(--v) !important;font-weight:700}}
+  @media (max-width:900px){header{padding-left:84px}#app.app-shell{padding-left:28px}.app-sidebar{transform:translateX(-102%);transition:transform .24s ease}.app-sidebar.is-open{transform:translateX(0)}.drawer-backdrop.is-open{display:block;position:fixed;inset:0;background:rgba(21,33,59,.42);z-index:25}.mobile-menu{display:inline-grid;place-items:center;width:44px;padding:0;background:transparent;box-shadow:none;color:var(--v);font-size:20px}.mobile-menu:hover{background:var(--surface-soft);transform:none;box-shadow:none}.mobile-bottom-nav{position:fixed;left:12px;right:12px;bottom:12px;z-index:22;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:6px;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-md)}.mobile-bottom-nav button{background:transparent;color:var(--grey);box-shadow:none;font-size:11px}.mobile-bottom-nav button:hover{color:var(--v);background:var(--surface-soft);transform:none;box-shadow:none}.mobile-bottom-nav button.active{color:var(--v);background:var(--surface-soft);font-weight:700}.mobile-bottom-nav-primary{color:var(--v) !important;font-weight:700}}
   @media (max-width:720px){header{height:64px;padding:0 14px;gap:8px}header b{font-size:19px}header span.tagline{display:none}#app.app-shell{padding:18px 14px 112px}.workspace-content{width:100%}.row{gap:8px}.card{flex-direction:column;padding:16px}.card>div:last-child{width:100%;text-align:left!important;min-width:0!important}.actions{justify-content:flex-start}.edit-grid{grid-template-columns:1fr}.stat-grid{grid-template-columns:repeat(2,1fr)}.chart-grid{grid-template-columns:1fr}.dash-toolbar{display:grid;grid-template-columns:1fr 1fr}.dash-toolbar button{width:100%;font-size:12px}.insight-grid{grid-template-columns:1fr}table.report{display:block;overflow-x:auto;white-space:nowrap}.auth-view{margin:8vh 14px 0;padding:22px}.auth-view form{flex-direction:column}.auth-view form button{width:100%}#whoami{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.toast{left:14px;right:14px;bottom:86px}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -457,6 +457,7 @@
   <div class="sidebar-spacer"></div>
   <nav class="sidebar-nav" id="sidebarAccount" aria-label="Λογαριασμός">
     <button type="button" id="sidebarCaptureButton" onclick="focusCapture()"><span class="nav-icon">＋</span>Καταγραφή από κείμενο</button>
+    <button type="button" id="sidebarIdeasButton" onclick="navigate('#/ideas')"><span class="nav-icon">💡</span>Ιδέες</button>
     <button type="button" id="sidebarProfileButton" onclick="navigate('#/profile')"><span class="nav-icon">◉</span>Προφίλ</button>
     <button type="button" onclick="logout()"><span class="nav-icon">⏻</span>Αποσύνδεση</button>
   </nav>
@@ -566,6 +567,7 @@
 <nav class="mobile-bottom-nav" aria-label="Πλοήγηση">
   <button type="button" id="navProjectsButton" onclick="navigate('#/projects')"><span aria-hidden="true">▦</span><br>Projects</button>
   <button type="button" id="navCaptureButton" class="mobile-bottom-nav-primary" onclick="focusCapture()"><span aria-hidden="true">＋</span><br>Καταγραφή</button>
+  <button type="button" id="navIdeasButton" onclick="navigate('#/ideas')"><span aria-hidden="true">💡</span><br>Ιδέες</button>
   <button type="button" id="navProfileButton" onclick="navigate('#/profile')"><span aria-hidden="true">◉</span><br>Προφίλ</button>
 </nav>
 <div id="modalShell" class="modal-shell" hidden role="dialog" aria-modal="true"></div>
@@ -1327,7 +1329,7 @@ async function load() {
   const isProjects = filter === "__projects__";
   const isProfile = filter === "__profile__";
   syncNav();
-  document.getElementById("projectChrome").hidden = isProjects || isProfile;
+  document.getElementById("projectChrome").hidden = isProjects || isProfile || isIdeas;
   document.getElementById("projectsView").style.display = isProjects ? "block" : "none";
   document.getElementById("profileView").style.display = isProfile ? "block" : "none";
   document.getElementById("teamView").style.display = isTeam ? "block" : "none";
@@ -2186,7 +2188,6 @@ const PROJECT_TABS = [
   ["proposals", "Προτάσεις", "__proposals__"],
   ["ado", "ADO", "__ado__"],
   ["team", "Ομάδα", "__team__"],
-  ["ideas", "Ιδέες", "__ideas__"],
   ["dashboard", "Dashboard", "__dashboard__"],
 ];
 let routeState = { view: "projects", project: "", tab: "" };
@@ -2207,6 +2208,7 @@ function parseRoute() {
     return { view: "project", project: parts[1], tab: known ? parts[2] : "overview" };
   }
   if (parts[0] === "profile") return { view: "profile", project: "", tab: "" };
+  if (parts[0] === "ideas") return { view: "ideas", project: "", tab: "" };
   if (parts[0] === "projects") return { view: "projects", project: "", tab: "" };
   return null;
 }
@@ -2236,7 +2238,7 @@ function setDocumentTitle(route) {
     const tab = PROJECT_TABS.find(function(t) { return t[0] === route.tab; });
     document.title = base + " | " + (project ? project.name : "Project") + " · " + (tab ? tab[1] : "");
   } else {
-    document.title = base + " | " + (route.view === "profile" ? "Προφίλ" : "Projects");
+    document.title = base + " | " + (route.view === "profile" ? "Προφίλ" : route.view === "ideas" ? "Ιδέες" : "Projects");
   }
 }
 
@@ -2290,7 +2292,7 @@ async function applyRoute() {
       if (seq !== routeSeq) return;
     }
   } else {
-    filter = route.view === "profile" ? "__profile__" : "__projects__";
+    filter = route.view === "profile" ? "__profile__" : route.view === "ideas" ? "__ideas__" : "__projects__";
   }
   setDocumentTitle(route);
   await load();
@@ -2374,6 +2376,7 @@ function projectInitials(name) {
 function syncNav() {
   renderSidebarProjects();
   const onProfile = routeState.view === "profile";
+  const onIdeas = routeState.view === "ideas";
   const toggle = function(id, active) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -2381,7 +2384,9 @@ function syncNav() {
     if (active) el.setAttribute("aria-current", "page"); else el.removeAttribute("aria-current");
   };
   toggle("sidebarProfileButton", onProfile);
-  toggle("navProjectsButton", !onProfile);
+  toggle("sidebarIdeasButton", onIdeas);
+  toggle("navProjectsButton", !onProfile && !onIdeas);
+  toggle("navIdeasButton", onIdeas);
   toggle("navProfileButton", onProfile);
 }
 
@@ -2609,17 +2614,12 @@ async function loadIdeasView() {
   const view = document.getElementById("ideasView");
   const nav = renderSubnav();
 
-  if (!currentProject) {
-    view.innerHTML = nav + "<p style='color:#5a6472'>Δημιούργησε πρώτα ένα project.</p>";
-    return;
-  }
-
   view.innerHTML = nav + "<p style='color:#5a6472'>Φόρτωση...</p>";
 
   const [summaryRes, ideasRes, activityRes] = await Promise.all([
-    fetch("/api/ideas/summary?project_id=" + encodeURIComponent(currentProject)),
-    fetch("/api/ideas?project_id=" + encodeURIComponent(currentProject)),
-    fetch("/api/ideas/activity?project_id=" + encodeURIComponent(currentProject) + "&limit=1"),
+    fetch("/api/ideas/summary"),
+    fetch("/api/ideas"),
+    fetch("/api/ideas/activity?limit=1"),
   ]);
   const summary = await summaryRes.json().catch(function () { return { total: 0, byStatus: {} }; });
   const ideas = await ideasRes.json().catch(function () { return []; });
@@ -2649,7 +2649,7 @@ async function loadIdeasView() {
   // ideaSubView === "home"
   const banner =
     '<div class="ibox-banner"><h2>Καλώς ήρθες' + (currentUser ? ", " + esc(firstNameFromEmail(currentUser)) : "") + '</h2>' +
-    '<p>Ιδέες της ομάδας σου σε αυτό το project — τι κινείται σήμερα.</p></div>';
+    '<p>Οι ιδέες όλης της εταιρείας σε ένα σημείο — τι κινείται σήμερα.</p></div>';
 
   // Step 8: το XP widget ζει πλέον εδώ (Ideas overview), όχι στο global header.
   const gamiBadge = '<div id="gamiBadge" class="ibox-xp-widget"></div>';
@@ -2687,7 +2687,7 @@ async function loadIdeasView() {
 
   const grid = ideas.length
     ? '<div class="ibox-idea-grid">' + ideas.map(renderIdeaGridCard).join("") + '</div>'
-    : "<p style='color:#5a6472'>Δεν υπάρχουν ακόμα ιδέες σε αυτό το project.</p>";
+    : "<p style='color:#5a6472'>Δεν υπάρχουν ακόμα ιδέες. Γίνε ο πρώτος!</p>";
 
   view.innerHTML =
     nav + banner + gamiBadge + ticker +
@@ -2700,7 +2700,10 @@ async function loadIdeasView() {
 function renderIdeaFormHtml() {
   return '<h3 style="margin-top:0">➕ Νέα ιδέα</h3>' +
     '<div class="row"><input id="ideaTitle" placeholder="Τίτλος" style="flex:2;min-width:220px"/>' +
-    '<input id="ideaCategory" placeholder="Κατηγορία (προαιρετικό)" style="flex:1;min-width:160px"/></div>' +
+    '<input id="ideaCategory" placeholder="Κατηγορία (προαιρετικό)" style="flex:1;min-width:160px"/>' +
+    '<select id="ideaProject" aria-label="Σχετίζεται με" style="flex:1;min-width:160px"><option value="">Γενική ιδέα (όλη η εταιρεία)</option>' +
+      Object.keys(projectsById).map(function (id) { return '<option value="' + esc(id) + '">Αφορά: ' + esc(projectsById[id].name) + '</option>'; }).join("") +
+    '</select></div>' +
     '<div class="row" style="margin-top:8px"><textarea id="ideaProblem" placeholder="Πρόβλημα" style="flex:1;min-height:60px"></textarea></div>' +
     '<div class="row" style="margin-top:8px"><textarea id="ideaSolution" placeholder="Προτεινόμενη λύση" style="flex:1;min-height:60px"></textarea></div>' +
     '<div class="row" style="margin-top:8px"><textarea id="ideaBenefit" placeholder="Αναμενόμενο όφελος" style="flex:1;min-height:60px"></textarea></div>' +
@@ -2723,6 +2726,7 @@ function renderIdeaGridCard(idea) {
       '<div class="tag-row"><span class="cat-tag">' + esc(idea.category || "Γενική") + '</span>' +
         '<span class="pill ' + esc(idea.status) + '">' + esc(idea.status) + '</span></div>' +
       '<h4>' + esc(idea.title) + '</h4>' +
+      (idea.project_name ? '<p style="margin:0 0 6px;font-size:11px;color:var(--v)">📁 ' + esc(idea.project_name) + '</p>' : "") +
       (idea.problem ? '<p>' + esc(idea.problem) + '</p>' : "") +
       '<div class="meta-row"><span>👤 ' + esc(idea.owner_name || idea.owner_email || "—") + ' · ' + esc(timeAgo(idea.created_at)) + '</span>' +
         '<button class="events-toggle" onclick="toggleIdeaEvents(\'' + esc(idea.id) + '\')">🕐 Ιστορικό</button></div>' +
@@ -2741,7 +2745,7 @@ async function addIdea() {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      project_id: currentProject,
+      project_id: document.getElementById("ideaProject").value || null,
       title: title,
       category: document.getElementById("ideaCategory").value,
       problem: document.getElementById("ideaProblem").value,

@@ -344,6 +344,10 @@ CREATE TABLE IF NOT EXISTS relay_ado_cache (
   synced_at     TEXT NOT NULL
 );
 
+-- Κρυφό «σπίτι» των κεντρικών Ιδεών (βλ. migrate_central_ideas.sql)
+INSERT OR IGNORE INTO projects (id, name, inbox_alias, created_by_user_id)
+VALUES ('relay-ideas-hub', 'Κεντρικές ιδέες', NULL, NULL);
+
 -- Demo δεδομένα για να δεις κάτι αμέσως
 INSERT INTO projects (id, name, owner_email, inbox_alias)
 VALUES ('demo', 'Demo Project', 'you@example.com', 'demo');
