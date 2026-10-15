@@ -2256,6 +2256,20 @@ export default {
         return json((results || []).map((project) => ({ ...project, can_manage: canManageProject(actor, project) })));
       }
 
+      // --- Gantt: φάσεις/gates + milestones του project (read-only) ---
+      const ganttMatch = path.match(/^\/api\/projects\/([^/]+)\/gantt$/);
+      if (ganttMatch && request.method === "GET") {
+        const project = await getAccessibleProject(env, actor, ganttMatch[1]);
+        if (!project) return json({ error: "Project not found" }, 404);
+        const { results: items } = await env.DB.prepare(
+          "SELECT id, seq, kind, label, style, start_date, end_date, note FROM relay_gantt_items WHERE project_id = ? ORDER BY seq"
+        ).bind(project.id).all();
+        const { results: milestones } = await env.DB.prepare(
+          "SELECT id, seq, name, tag, baseline_date, due_date, status FROM relay_milestones WHERE project_id = ? ORDER BY due_date, seq"
+        ).bind(project.id).all();
+        return json({ items: items || [], milestones: milestones || [] });
+      }
+
       // --- Sprints: λίστα με στατιστικά (SP, ολοκληρωμένα) + backlog ---
       const sprintsMatch = path.match(/^\/api\/projects\/([^/]+)\/sprints$/);
       if (sprintsMatch && request.method === "GET") {

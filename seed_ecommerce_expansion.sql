@@ -1,3 +1,4 @@
+-- SUPERSEDED για τα B2C από restructure_ecommerce_projects.sql — μην ξανατρέξεις αυτό το seed.
 -- Seed: eCommerce Expansion Programme (2 projects, 29 milestones). Σταθερά IDs, ασφαλές να ξανατρέξει.
 -- Προαπαιτεί migrate_add_portfolios.sql. Δεν δημιουργεί asks.
 --   npx wrangler d1 execute relay-db --local  --file=./seed_ecommerce_expansion.sql

@@ -533,6 +533,7 @@
   <div id="sprintsView" style="display:none"></div>
   <div id="proposalsView" style="display:none"></div>
   <div id="adoView" style="display:none"></div>
+  <div id="ganttView" style="display:none"></div>
   <div id="list"></div>
 
   <div id="createSection">
@@ -1324,6 +1325,7 @@ async function load() {
   const isSprints = filter === "__sprints__";
   const isProposals = filter === "__proposals__";
   const isAdo = filter === "__ado__";
+  const isGantt = filter === "__gantt__";
   const isAsks = filter === "__asks__";
   const isTeam = filter === "__team__";
   const isProjects = filter === "__projects__";
@@ -1341,6 +1343,7 @@ async function load() {
   document.getElementById("sprintsView").style.display = isSprints ? "block" : "none";
   document.getElementById("proposalsView").style.display = isProposals ? "block" : "none";
   document.getElementById("adoView").style.display = isAdo ? "block" : "none";
+  document.getElementById("ganttView").style.display = isGantt ? "block" : "none";
   document.getElementById("askStatusTabs").style.display = isAsks ? "flex" : "none";
   document.getElementById("tabsLegend").style.display = (isAsks && askStatusFilter === "") ? "block" : "none";
   document.getElementById("list").style.display = isAsks ? "block" : "none";
@@ -1358,6 +1361,11 @@ async function load() {
 
   if (isTeam) {
     await loadTeamView();
+    return;
+  }
+
+  if (isGantt) {
+    await loadGanttView();
     return;
   }
 
@@ -2186,6 +2194,7 @@ const PROJECT_TABS = [
   ["board", "Πίνακας", "__board__"],
   ["sprints", "Sprints", "__sprints__"],
   ["proposals", "Προτάσεις", "__proposals__"],
+  ["gantt", "Gantt", "__gantt__"],
   ["ado", "ADO", "__ado__"],
   ["team", "Ομάδα", "__team__"],
   ["dashboard", "Dashboard", "__dashboard__"],
@@ -2368,6 +2377,9 @@ function renderSidebarProjects() {
 }
 
 function projectInitials(name) {
+  // «86064 - B2B CY - Implementation» -> «BCY» (B2B/B2C + χώρα), αλλιώς πρώτα γράμματα των 2 πρώτων λέξεων
+  const code = String(name || "").match(/\bB2([BC])\s+(CY|GR)\b/i);
+  if (code) return (code[1] + code[2]).toUpperCase();
   const words = String(name || "?").trim().split(/\s+/).filter(Boolean);
   const chars = words.length > 1 ? words[0][0] + words[1][0] : String(name || "?").slice(0, 2);
   return chars.toUpperCase();
@@ -3484,6 +3496,121 @@ function renderProposalCard(draft) {
       (canOpen
         ? '<a href="/mcp-approval.html?draft=' + esc(draft.id) + '" target="_blank" rel="noopener">Άνοιγμα ↗</a>'
         : draft.status === "committed" ? "<span>Έγιναν ενέργειες</span>" : "<span>—</span>") +
+    '</div></div>';
+}
+
+// ---------- Gantt (read-only): φάσεις, gates, milestones ανά project ----------
+const GANTT_COLORS = {
+  workshops: "#b7714f", tech_workshops: "#8f5a3f", analysis_brd: "#ff6b5b", brd_gr: "#7cc4b8", brd_cy: "#9ad6cb",
+  uxui: "#2f8f83", blueprint: "#3f6f66", development: "#1d2a2a", sit: "#4a7a96", fat_uat: "#2f5d7c",
+  hypercare: "#9aabab", phase_b: "#7f9490", gate: "#c8453a", golive: "#ff6b5b", freeze: "#c9d1d1"
+};
+
+function ganttDay(iso) { return Date.parse(iso + "T00:00:00Z") / 86400000; }
+function ganttFmt(iso) { const p = String(iso || "").split("-"); return p.length === 3 ? p[2] + "/" + p[1] + "/" + p[0].slice(2) : ""; }
+
+async function loadGanttView() {
+  const view = document.getElementById("ganttView");
+  if (!currentProject) { view.innerHTML = "<p style='color:#5a6472'>Δημιούργησε πρώτα ένα project.</p>"; return; }
+  view.innerHTML = "<p style='color:#5a6472'>Φόρτωση...</p>";
+  try {
+    const response = await fetch("/api/projects/" + encodeURIComponent(currentProject) + "/gantt");
+    const data = await response.json();
+    if (filter !== "__gantt__") return;
+    view.innerHTML = response.ok ? renderGantt(data) : errorBox(data.error || "Σφάλμα φόρτωσης.");
+  } catch (error) {
+    view.innerHTML = errorBox("Δεν ήταν δυνατή η σύνδεση με το Relay.");
+  }
+}
+
+function renderGantt(data) {
+  const items = data.items || [], milestones = data.milestones || [];
+  if (!items.length && !milestones.length) {
+    return '<div class="empty-state">Δεν υπάρχει Gantt για αυτό το project ακόμα.</div>';
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const dates = items.flatMap(function(i) { return [i.start_date, i.end_date || i.start_date]; })
+    .concat(milestones.map(function(m) { return m.due_date; }));
+  const startDate = new Date(Math.min.apply(null, dates.map(ganttDay)) * 86400000);
+  startDate.setUTCDate(1);
+  const endDate = new Date(Math.max.apply(null, dates.map(ganttDay)) * 86400000);
+  endDate.setUTCMonth(endDate.getUTCMonth() + 1, 1);
+  const d0 = startDate.getTime() / 86400000, d1 = endDate.getTime() / 86400000, span = d1 - d0;
+  const pct = function(iso) { return ((ganttDay(iso) - d0) / span * 100).toFixed(3) + "%"; };
+  const width = function(a, b) { return (Math.max(1, ganttDay(b) - ganttDay(a) + 1) / span * 100).toFixed(3) + "%"; };
+
+  let months = "";
+  const cur = new Date(startDate.getTime());
+  while (cur.getTime() < endDate.getTime()) {
+    const next = new Date(cur.getTime()); next.setUTCMonth(next.getUTCMonth() + 1, 1);
+    const label = cur.toLocaleString("el-GR", { month: "short", year: "2-digit", timeZone: "UTC" });
+    months += '<div style="position:absolute;top:0;bottom:0;left:' + ((cur.getTime() / 86400000 - d0) / span * 100).toFixed(3) + '%;width:' +
+      ((next.getTime() - cur.getTime()) / 86400000 / span * 100).toFixed(3) + '%;border-left:1px solid #dfe5e5;padding:6px 6px;font-size:12px;font-weight:700;color:#0f3b3a;box-sizing:border-box">' + esc(label) + '</div>';
+    cur.setTime(next.getTime());
+  }
+  const inRange = today >= startDate.toISOString().slice(0, 10) && today <= endDate.toISOString().slice(0, 10);
+  const todayLine = inRange ? '<div title="Σήμερα" style="position:absolute;top:0;bottom:0;left:' + pct(today) + ';border-left:2px dashed #d33;z-index:3"></div>' : "";
+  const bands = items.filter(function(i) { return i.kind === "band"; }).map(function(i) {
+    return '<div title="' + esc(i.label) + '" style="position:absolute;top:0;bottom:0;left:' + pct(i.start_date) + ';width:' + width(i.start_date, i.end_date || i.start_date) + ';background:#e3e8e8;opacity:.7"></div>';
+  }).join("");
+
+  const ROW = 28;
+  const rows = items.filter(function(i) { return i.kind === "bar"; }).map(function(i) {
+    const color = GANTT_COLORS[i.style] || "#4a7a96";
+    const dateText = ganttFmt(i.start_date) + "–" + ganttFmt(i.end_date) + (i.note ? " · " + i.note : "");
+    return '<div style="position:relative;height:' + ROW + 'px;border-bottom:1px solid #eef1f1">' +
+      '<div title="' + esc(i.label + " · " + dateText) + '" style="position:absolute;top:5px;height:' + (ROW - 10) + 'px;left:' + pct(i.start_date) + ';width:' + width(i.start_date, i.end_date) + ';background:' + color + ';border-radius:4px"></div></div>';
+  });
+  const labels = items.filter(function(i) { return i.kind === "bar"; }).map(function(i) {
+    return '<div style="height:' + ROW + 'px;line-height:' + ROW + 'px;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid #eef1f1" title="' +
+      esc(ganttFmt(i.start_date) + "–" + ganttFmt(i.end_date)) + '">' + esc(i.label) + ' <span style="color:#7a8686;font-weight:400">' + esc(ganttFmt(i.start_date) + "–" + ganttFmt(i.end_date)) + '</span></div>';
+  });
+
+  const marks = function(list, color, shape) {
+    return list.map(function(x) {
+      const iso = x.date;
+      return '<div title="' + esc(x.label + " · " + ganttFmt(iso)) + '" style="position:absolute;top:6px;left:calc(' + pct(iso) + ' - 8px);width:16px;height:16px;background:' + x.color + ';' +
+        (shape === "diamond" ? "transform:rotate(45deg) scale(.8);" : "border-radius:50%;") + 'z-index:2"></div>';
+    }).join("");
+  };
+  const gates = items.filter(function(i) { return i.kind === "flag"; });
+  const gateMarks = marks(gates.map(function(g) { return { date: g.start_date, label: g.label, color: GANTT_COLORS[g.style] || "#c8453a" }; }), "", "circle");
+  const msMarks = marks(milestones.map(function(m) {
+    const late = m.status !== "done" && m.due_date < today;
+    return { date: m.due_date, label: m.name + (m.baseline_date !== m.due_date ? " (baseline " + ganttFmt(m.baseline_date) + ")" : ""), color: m.status === "done" ? "#2f8f4a" : late ? "#d33" : "#0f3b3a" };
+  }), "", "diamond");
+
+  const LABEL_W = 270;
+  const grid = '<div style="position:relative;min-width:900px">' + bands + todayLine + rows.join("") + '</div>';
+  const header = '<div style="position:relative;height:30px;background:#eaf0f0;border-bottom:1px solid #cfd8d8">' + months + '</div>';
+  const laneRow = function(title, content) {
+    return '<div style="display:flex"><div style="width:' + LABEL_W + 'px;flex:none;height:28px;line-height:28px;font-size:12.5px;font-weight:700;border-bottom:1px solid #eef1f1">' + title + '</div>' +
+      '<div style="position:relative;flex:1;min-width:900px;height:28px;border-bottom:1px solid #eef1f1">' + content + '</div></div>';
+  };
+  const gateList = gates.slice().sort(function(a, b) { return a.start_date < b.start_date ? -1 : 1; }).map(function(g) {
+    return '<li><b>' + esc(ganttFmt(g.start_date)) + '</b> — ' + esc(g.label) + '</li>';
+  }).join("");
+  const msList = milestones.map(function(m) {
+    const late = m.status !== "done" && m.due_date < today;
+    return '<li><b>' + esc(ganttFmt(m.due_date)) + '</b> — ' + esc(m.name) + ' <span style="color:#7a8686">[' + esc(m.tag) + ']</span>' +
+      (m.baseline_date !== m.due_date ? ' <span style="color:#b36b00">(baseline ' + esc(ganttFmt(m.baseline_date)) + ')</span>' : "") +
+      (m.status === "done" ? " ✓" : late ? ' <span style="color:#d33">· εκπρόθεσμο</span>' : "") + '</li>';
+  }).join("");
+
+  const legend = [["workshops", "Workshops"], ["analysis_brd", "Analysis & BRD"], ["brd_gr", "BRD drop"], ["uxui", "UX/UI"], ["blueprint", "Technical blueprint"], ["development", "Development"], ["sit", "SIT"], ["fat_uat", "FAT / UAT / readiness"], ["hypercare", "Hypercare"]]
+    .map(function(l) { return '<span style="display:inline-flex;align-items:center;gap:5px;margin-right:12px;font-size:12px"><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:' + GANTT_COLORS[l[0]] + '"></i>' + l[1] + '</span>'; }).join("");
+
+  return '<div class="card" style="padding:14px;overflow:hidden"><h2 style="margin:0 0 10px;font-size:17px">Gantt</h2>' +
+    '<div style="overflow-x:auto"><div style="min-width:' + (LABEL_W + 900) + 'px">' +
+    '<div style="display:flex"><div style="width:' + LABEL_W + 'px;flex:none"></div><div style="flex:1;min-width:900px">' + header + '</div></div>' +
+    (milestones.length ? laneRow("◆ Milestones", msMarks) : "") +
+    (gates.length ? laneRow("● Gates & releases", gateMarks) : "") +
+    '<div style="display:flex"><div style="width:' + LABEL_W + 'px;flex:none">' + labels.join("") + '</div><div style="flex:1;min-width:900px">' + grid + '</div></div>' +
+    '</div></div>' +
+    '<div style="margin-top:10px">' + legend + '</div>' +
+    '<div style="display:flex;gap:28px;flex-wrap:wrap;margin-top:14px;font-size:13px">' +
+    (msList ? '<div><b>Milestones</b><ul style="margin:6px 0 0 16px;padding:0">' + msList + '</ul></div>' : "") +
+    (gateList ? '<div><b>Gates &amp; releases</b><ul style="margin:6px 0 0 16px;padding:0">' + gateList + '</ul></div>' : "") +
     '</div></div>';
 }
 
