@@ -364,3 +364,45 @@ VALUES
   ('a1','demo','Στείλε το updated BRD','vendor@acme.com','vendor@acme.com','you@example.com','2026-08-20','overdue','...can you send the updated BRD by Wed?'),
   ('a2','demo','Επιβεβαίωσε την ημερομηνία UAT','pm@internal.com','pm@internal.com','you@example.com','2026-08-30','accepted','let''s lock UAT for the 30th'),
   ('a3','demo','Απόφαση: πάμε με το MVP scope','you@example.com','you@example.com','steering','2026-08-25','open','we agreed to ship the MVP first');
+-- Portfolios + milestones (βλ. migrate_add_portfolios.sql)
+CREATE TABLE IF NOT EXISTS relay_portfolios (
+  id                   TEXT PRIMARY KEY,
+  name                 TEXT NOT NULL,
+  owner_email          TEXT NOT NULL,            -- lowercase
+  report_weekday       INTEGER NOT NULL DEFAULT 5,  -- 1=Δευ ... 5=Παρ (weekly status)
+  red_slip_business_days INTEGER NOT NULL DEFAULT 3, -- RED όταν milestone γλιστρήσει > N εργάσιμες
+  created_by_user_id   TEXT REFERENCES relay_users(id),
+  created_at           TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS relay_portfolio_members (
+  portfolio_id TEXT NOT NULL REFERENCES relay_portfolios(id),
+  email        TEXT NOT NULL,                    -- lowercase
+  role         TEXT NOT NULL DEFAULT 'member',   -- owner | member
+  PRIMARY KEY (portfolio_id, email)
+);
+
+CREATE TABLE IF NOT EXISTS relay_milestones (
+  id            TEXT PRIMARY KEY,
+  project_id    TEXT NOT NULL REFERENCES projects(id),
+  seq           INTEGER NOT NULL,                -- σειρά εμφάνισης μέσα στο project
+  name          TEXT NOT NULL,
+  tag           TEXT NOT NULL,                   -- Analysis|BRD|Blueprint|Development|SIT|FAT|UAT|Readiness|Hypercare|GoLive
+  baseline_date TEXT NOT NULL,                   -- αρχικό due (YYYY-MM-DD), για υπολογισμό slip
+  due_date      TEXT NOT NULL,                   -- τρέχον due (YYYY-MM-DD)
+  status        TEXT NOT NULL DEFAULT 'planned', -- planned | in_progress | done
+  completed_at  TEXT,
+  created_at    TEXT DEFAULT (datetime('now')),
+  UNIQUE (project_id, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_milestones_project ON relay_milestones(project_id, due_date);
+
+ALTER TABLE projects ADD COLUMN portfolio_id TEXT REFERENCES relay_portfolios(id);
+ALTER TABLE projects ADD COLUMN co_owner_email TEXT;
+ALTER TABLE asks ADD COLUMN milestone_id TEXT REFERENCES relay_milestones(id);
+CREATE INDEX IF NOT EXISTS idx_projects_portfolio ON projects(portfolio_id);
+CREATE INDEX IF NOT EXISTS idx_asks_milestone ON asks(milestone_id);
+
+-- asks.kind: προστίθεται η τιμή 'rfi' (action|decision|commitment|risk|blocker|rfi) — χωρίς αλλαγή schema (free text).
+-- Το "κάθε ask ανήκει σε milestone" θα επιβληθεί στο API για projects με portfolio_id (Phase 2),
+-- ΟΧΙ με trigger, ώστε email handler και /api/ingest να μη σπάσουν.
