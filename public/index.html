@@ -234,6 +234,37 @@
   .sprint-ask-title{flex:1 1 220px;font-size:13px;font-weight:600}
   .sprint-ask-meta{display:flex;gap:6px;flex-wrap:wrap}
   .sprint-ask select{min-width:140px;min-height:36px}
+  .g-wrap{background:#fff;border:1px solid #dfe5e5;border-radius:14px;padding:14px 16px;max-width:100%;box-sizing:border-box}
+  .g-title{margin:0 0 8px;font-size:17px}
+  .g-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px;font-size:12px}
+  .g-legend span{display:inline-flex;align-items:center;gap:5px}
+  .g-legend i{display:inline-block;width:12px;height:12px;border-radius:3px}
+  .g-row{display:grid;grid-template-columns:230px minmax(0,1fr);align-items:center;border-bottom:1px solid #eef1f1}
+  .g-head{border-bottom:0;margin-bottom:2px}
+  .g-label{font-size:13px;font-weight:600;padding:3px 10px 3px 0;min-width:0}
+  .g-label span{display:block;font-weight:400;color:#7a8686;font-size:11.5px}
+  .g-track{position:relative;height:26px}
+  .g-months{position:relative;height:26px;background:#eaf0f0;border-radius:6px;overflow:hidden}
+  .g-months i{position:absolute;top:0;bottom:0;border-left:1px solid #cfd8d8;font-style:normal;font-size:11px;font-weight:700;color:#0f3b3a;padding:6px 4px;box-sizing:border-box;overflow:hidden;white-space:nowrap}
+  .g-bar{position:absolute;top:5px;height:16px;border-radius:4px;min-width:5px}
+  .g-today{position:absolute;top:0;bottom:0;border-left:2px dashed #d33;z-index:2}
+  .g-band{position:absolute;top:0;bottom:0;background:#e3e8e8;opacity:.8}
+  .g-dot{position:absolute;top:6px;width:14px;height:14px;margin-left:-7px;border-radius:50%;z-index:1}
+  .g-dia{border-radius:2px;transform:rotate(45deg) scale(.85)}
+  .g-lists{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;margin-top:18px;font-size:13px}
+  .g-lists ul{margin:6px 0 0 16px;padding:0}
+  .g-lists li{margin-bottom:3px}
+  .g-warn{color:#b36b00;font-style:normal}
+  .g-late{color:#d33;font-style:normal}
+  @media (max-width:720px){
+    .g-wrap{padding:12px}
+    .g-row{grid-template-columns:minmax(0,1fr);padding:5px 0}
+    .g-head .g-label{display:none}
+    .g-head{padding:0}
+    .g-label{padding:0 0 3px}
+    .g-months i{font-size:10px;padding:6px 2px}
+    .g-yr{display:none}
+  }
   a.ado-chip{color:var(--v-strong);text-decoration:none}
   a.ado-chip:hover{text-decoration:underline}
   .chip b{color:var(--ink);font-weight:600}
@@ -3543,74 +3574,63 @@ function renderGantt(data) {
   const cur = new Date(startDate.getTime());
   while (cur.getTime() < endDate.getTime()) {
     const next = new Date(cur.getTime()); next.setUTCMonth(next.getUTCMonth() + 1, 1);
-    const label = cur.toLocaleString("el-GR", { month: "short", year: "2-digit", timeZone: "UTC" });
-    months += '<div style="position:absolute;top:0;bottom:0;left:' + ((cur.getTime() / 86400000 - d0) / span * 100).toFixed(3) + '%;width:' +
-      ((next.getTime() - cur.getTime()) / 86400000 / span * 100).toFixed(3) + '%;border-left:1px solid #dfe5e5;padding:6px 6px;font-size:12px;font-weight:700;color:#0f3b3a;box-sizing:border-box">' + esc(label) + '</div>';
+    let label = cur.toLocaleString("el-GR", { month: "short", timeZone: "UTC" });
+    if (cur.getUTCMonth() === 0 || cur.getTime() === startDate.getTime()) label += ' <span class="g-yr">' + String(cur.getUTCFullYear()).slice(2) + "</span>";
+    months += '<i style="left:' + ((cur.getTime() / 86400000 - d0) / span * 100).toFixed(3) + '%;width:' +
+      ((next.getTime() - cur.getTime()) / 86400000 / span * 100).toFixed(3) + '%">' + label + '</i>';
     cur.setTime(next.getTime());
   }
+
   const inRange = today >= startDate.toISOString().slice(0, 10) && today <= endDate.toISOString().slice(0, 10);
-  const todayLine = inRange ? '<div title="Σήμερα" style="position:absolute;top:0;bottom:0;left:' + pct(today) + ';border-left:2px dashed #d33;z-index:3"></div>' : "";
-  const bands = items.filter(function(i) { return i.kind === "band"; }).map(function(i) {
-    return '<div title="' + esc(i.label) + '" style="position:absolute;top:0;bottom:0;left:' + pct(i.start_date) + ';width:' + width(i.start_date, i.end_date || i.start_date) + ';background:#e3e8e8;opacity:.7"></div>';
+  const decor = items.filter(function(i) { return i.kind === "band"; }).map(function(i) {
+    return '<div class="g-band" title="' + esc(i.label) + '" style="left:' + pct(i.start_date) + ';width:' + width(i.start_date, i.end_date || i.start_date) + '"></div>';
+  }).join("") + (inRange ? '<div class="g-today" title="Σήμερα" style="left:' + pct(today) + '"></div>' : "");
+  const track = function(inner) { return '<div class="g-track">' + decor + inner + '</div>'; };
+  const row = function(label, sub, inner) {
+    return '<div class="g-row"><div class="g-label">' + label + (sub ? '<span>' + sub + '</span>' : "") + '</div>' + track(inner) + '</div>';
+  };
+
+  const bars = items.filter(function(i) { return i.kind === "bar"; }).sort(function(a, b) {
+    return a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : a.seq - b.seq;
+  });
+  const barRows = bars.map(function(i) {
+    const range = ganttFmt(i.start_date) + " – " + ganttFmt(i.end_date) + (i.note ? " · " + i.note : "");
+    return row(esc(i.label), esc(range),
+      '<div class="g-bar" title="' + esc(i.label + " · " + range) + '" style="left:' + pct(i.start_date) + ';width:' + width(i.start_date, i.end_date) + ';background:' + (GANTT_COLORS[i.style] || "#4a7a96") + '"></div>');
   }).join("");
 
-  const ROW = 28;
-  const rows = items.filter(function(i) { return i.kind === "bar"; }).map(function(i) {
-    const color = GANTT_COLORS[i.style] || "#4a7a96";
-    const dateText = ganttFmt(i.start_date) + "–" + ganttFmt(i.end_date) + (i.note ? " · " + i.note : "");
-    return '<div style="position:relative;height:' + ROW + 'px;border-bottom:1px solid #eef1f1">' +
-      '<div title="' + esc(i.label + " · " + dateText) + '" style="position:absolute;top:5px;height:' + (ROW - 10) + 'px;left:' + pct(i.start_date) + ';width:' + width(i.start_date, i.end_date) + ';background:' + color + ';border-radius:4px"></div></div>';
-  });
-  const labels = items.filter(function(i) { return i.kind === "bar"; }).map(function(i) {
-    return '<div style="height:' + ROW + 'px;line-height:' + ROW + 'px;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid #eef1f1" title="' +
-      esc(ganttFmt(i.start_date) + "–" + ganttFmt(i.end_date)) + '">' + esc(i.label) + ' <span style="color:#7a8686;font-weight:400">' + esc(ganttFmt(i.start_date) + "–" + ganttFmt(i.end_date)) + '</span></div>';
-  });
-
-  const marks = function(list, color, shape) {
-    return list.map(function(x) {
-      const iso = x.date;
-      return '<div title="' + esc(x.label + " · " + ganttFmt(iso)) + '" style="position:absolute;top:6px;left:calc(' + pct(iso) + ' - 8px);width:16px;height:16px;background:' + x.color + ';' +
-        (shape === "diamond" ? "transform:rotate(45deg) scale(.8);" : "border-radius:50%;") + 'z-index:2"></div>';
-    }).join("");
-  };
-  const gates = items.filter(function(i) { return i.kind === "flag"; });
-  const gateMarks = marks(gates.map(function(g) { return { date: g.start_date, label: g.label, color: GANTT_COLORS[g.style] || "#c8453a" }; }), "", "circle");
-  const msMarks = marks(milestones.map(function(m) {
-    const late = m.status !== "done" && m.due_date < today;
-    return { date: m.due_date, label: m.name + (m.baseline_date !== m.due_date ? " (baseline " + ganttFmt(m.baseline_date) + ")" : ""), color: m.status === "done" ? "#2f8f4a" : late ? "#d33" : "#0f3b3a" };
-  }), "", "diamond");
-
-  const LABEL_W = 270;
-  const grid = '<div style="position:relative;min-width:900px">' + bands + todayLine + rows.join("") + '</div>';
-  const header = '<div style="position:relative;height:30px;background:#eaf0f0;border-bottom:1px solid #cfd8d8">' + months + '</div>';
-  const laneRow = function(title, content) {
-    return '<div style="display:flex"><div style="width:' + LABEL_W + 'px;flex:none;height:28px;line-height:28px;font-size:12.5px;font-weight:700;border-bottom:1px solid #eef1f1">' + title + '</div>' +
-      '<div style="position:relative;flex:1;min-width:900px;height:28px;border-bottom:1px solid #eef1f1">' + content + '</div></div>';
-  };
-  const gateList = gates.slice().sort(function(a, b) { return a.start_date < b.start_date ? -1 : 1; }).map(function(g) {
-    return '<li><b>' + esc(ganttFmt(g.start_date)) + '</b> — ' + esc(g.label) + '</li>';
+  const gates = items.filter(function(i) { return i.kind === "flag"; })
+    .sort(function(a, b) { return a.start_date < b.start_date ? -1 : 1; });
+  const gateMarks = gates.map(function(g) {
+    return '<div class="g-dot" title="' + esc(g.label + " · " + ganttFmt(g.start_date)) + '" style="left:' + pct(g.start_date) + ';background:' + (GANTT_COLORS[g.style] || "#c8453a") + '"></div>';
   }).join("");
-  const msList = milestones.map(function(m) {
+  const msMarks = milestones.map(function(m) {
     const late = m.status !== "done" && m.due_date < today;
-    return '<li><b>' + esc(ganttFmt(m.due_date)) + '</b> — ' + esc(m.name) + ' <span style="color:#7a8686">[' + esc(m.tag) + ']</span>' +
-      (m.baseline_date !== m.due_date ? ' <span style="color:#b36b00">(baseline ' + esc(ganttFmt(m.baseline_date)) + ')</span>' : "") +
-      (m.status === "done" ? " ✓" : late ? ' <span style="color:#d33">· εκπρόθεσμο</span>' : "") + '</li>';
+    const title = m.name + " · " + ganttFmt(m.due_date) + (m.baseline_date !== m.due_date ? " (baseline " + ganttFmt(m.baseline_date) + ")" : "");
+    return '<div class="g-dot g-dia" title="' + esc(title) + '" style="left:' + pct(m.due_date) + ';background:' + (m.status === "done" ? "#2f8f4a" : late ? "#d33" : "#0f3b3a") + '"></div>';
   }).join("");
 
   const legend = [["workshops", "Workshops"], ["analysis_brd", "Analysis & BRD"], ["brd_gr", "BRD drop"], ["uxui", "UX/UI"], ["blueprint", "Technical blueprint"], ["development", "Development"], ["sit", "SIT"], ["fat_uat", "FAT / UAT / readiness"], ["hypercare", "Hypercare"]]
-    .map(function(l) { return '<span style="display:inline-flex;align-items:center;gap:5px;margin-right:12px;font-size:12px"><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:' + GANTT_COLORS[l[0]] + '"></i>' + l[1] + '</span>'; }).join("");
+    .map(function(l) { return '<span><i style="background:' + GANTT_COLORS[l[0]] + '"></i>' + l[1] + '</span>'; }).join("");
 
-  return '<div class="card" style="padding:14px;overflow:hidden"><h2 style="margin:0 0 10px;font-size:17px">Gantt</h2>' +
-    '<div style="overflow-x:auto"><div style="min-width:' + (LABEL_W + 900) + 'px">' +
-    '<div style="display:flex"><div style="width:' + LABEL_W + 'px;flex:none"></div><div style="flex:1;min-width:900px">' + header + '</div></div>' +
-    (milestones.length ? laneRow("◆ Milestones", msMarks) : "") +
-    (gates.length ? laneRow("● Gates & releases", gateMarks) : "") +
-    '<div style="display:flex"><div style="width:' + LABEL_W + 'px;flex:none">' + labels.join("") + '</div><div style="flex:1;min-width:900px">' + grid + '</div></div>' +
-    '</div></div>' +
-    '<div style="margin-top:10px">' + legend + '</div>' +
-    '<div style="display:flex;gap:28px;flex-wrap:wrap;margin-top:14px;font-size:13px">' +
-    (msList ? '<div><b>Milestones</b><ul style="margin:6px 0 0 16px;padding:0">' + msList + '</ul></div>' : "") +
-    (gateList ? '<div><b>Gates &amp; releases</b><ul style="margin:6px 0 0 16px;padding:0">' + gateList + '</ul></div>' : "") +
+  const msList = milestones.map(function(m) {
+    const late = m.status !== "done" && m.due_date < today;
+    return '<li><b>' + esc(ganttFmt(m.due_date)) + '</b> — ' + esc(m.name) +
+      (m.baseline_date !== m.due_date ? ' <em class="g-warn">(baseline ' + esc(ganttFmt(m.baseline_date)) + ')</em>' : "") +
+      (m.status === "done" ? " ✓" : late ? ' <em class="g-late">· εκπρόθεσμο</em>' : "") + '</li>';
+  }).join("");
+  const gateList = gates.map(function(g) {
+    return '<li><b>' + esc(ganttFmt(g.start_date)) + '</b> — ' + esc(g.label) + '</li>';
+  }).join("");
+
+  return '<div class="g-wrap"><h2 class="g-title">Gantt</h2><div class="g-legend">' + legend + '</div>' +
+    '<div class="g-row g-head"><div class="g-label"></div><div class="g-months">' + months + '</div></div>' +
+    (milestones.length ? row("◆ Milestones", "", msMarks) : "") +
+    (gates.length ? row("● Gates &amp; releases", "", gateMarks) : "") +
+    barRows +
+    '<div class="g-lists">' +
+    (msList ? '<div><b>Milestones</b><ul>' + msList + '</ul></div>' : "") +
+    (gateList ? '<div><b>Gates &amp; releases</b><ul>' + gateList + '</ul></div>' : "") +
     '</div></div>';
 }
 
