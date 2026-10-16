@@ -216,6 +216,9 @@
   .detail-wide{grid-column:1/-1}
   @media (max-width:720px){.detail-grid{grid-template-columns:1fr}.ask-actions{flex-direction:row;flex-wrap:wrap;min-width:0}.ask-actions select{flex:1 1 100%}.ask-actions button{flex:1 1 40%}.modal-shell{align-items:end;padding:0}.modal-card{border-radius:var(--radius) var(--radius) 0 0;max-height:92vh}}
   .ibox-board-sprint{max-width:220px;min-height:36px}
+  .card[draggable="true"],.sprint-ask[draggable="true"]{cursor:grab}
+  .card.dragging,.sprint-ask.dragging{opacity:.5}
+  .drop-over{outline:2px dashed var(--blue,#233a7a);outline-offset:-2px;background:var(--bluebg,#eef2fb)}
   .sprint-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px;box-shadow:var(--shadow-sm)}
   .sprint-card.sprint-active{border-left:4px solid var(--v)}
   .sprint-card.sprint-closed{opacity:.8}
@@ -587,7 +590,7 @@
     <h3>📋 Καταγραφή κειμένου</h3>
     <div class="helptext">Επικόλλησε email, chat ή πρακτικά συνάντησης — εντοπίζονται προτάσεις για ενέργειες, που ελέγχεις πριν δημιουργηθεί οτιδήποτε.</div>
     <div class="helptext" id="captureStorageNote" style="color:var(--amber)"><b>Το κείμενο που επικολλάς αποθηκεύεται ως πηγή στο project.</b></div>
-    <textarea id="paste" placeholder="Επικόλλησε κείμενο εδώ..." aria-describedby="captureStorageNote"></textarea>
+    <textarea id="paste" placeholder="Επικόλλησε κείμενο εδώ ή σύρε ένα αρχείο (.txt, .eml, .md, .csv)..." aria-describedby="captureStorageNote"></textarea>
     <div class="row" style="margin-top:10px">
       <button id="extractButton" class="secondary" onclick="ingest()">Εντοπισμός προτάσεων</button>
       <button class="secondary" onclick="loadExample()">📝 Παράδειγμα</button>
@@ -1570,7 +1573,7 @@ function renderAskCard(ask) {
   ].filter(function(line) { return line[1]; });
 
   return (
-    '<div class="card ' + cardClass + '" id="card-' + esc(ask.id) + '">' +
+    '<div class="card ' + cardClass + '" id="card-' + esc(ask.id) + '" draggable="true" data-ask-id="' + esc(ask.id) + '">' +
       '<div style="flex:1;min-width:0">' +
         '<div class="title">' + esc(ask.title) + '</div>' +
         '<div class="chips">' +
@@ -3339,7 +3342,7 @@ async function loadSprintsView() {
 
 function sprintAskRow(ask, locked) {
   const done = ask.status === "done";
-  return '<li class="sprint-ask' + (done ? " is-done" : "") + '">' +
+  return '<li class="sprint-ask' + (done ? " is-done" : "") + '"' + (locked ? "" : ' draggable="true" data-ask-id="' + esc(ask.id) + '"') + '>' +
     '<span class="sprint-ask-title">' + esc(ask.title) + '</span>' +
     '<span class="sprint-ask-meta">' +
       (ask.owner ? '<span class="chip">👤 ' + esc(ask.owner) + '</span>' : '<span class="chip">Χωρίς υπεύθυνο</span>') +
@@ -3369,7 +3372,7 @@ function sprintCardHtml(sp, asks) {
   } else if (sprintsMeta.can_manage) {
     actions = '<div class="sprint-actions"><button type="button" class="danger-outline" onclick="deleteSprint(\'' + id + '\')">Διαγραφή</button></div>';
   }
-  return '<section class="sprint-card sprint-' + esc(sp.status) + '">' +
+  return '<section class="sprint-card sprint-' + esc(sp.status) + '"' + (sp.status === "closed" ? "" : ' data-drop-sprint="' + id + '"') + '>' +
     '<div class="sprint-head"><h3>' + esc(sp.name) + '</h3><span class="pill sprint-pill-' + esc(sp.status) + '">' + esc(SPRINT_STATUS_LABELS[sp.status] || sp.status) + '</span></div>' +
     '<p class="helptext">' + dates + (sp.goal ? ' · ' + esc(sp.goal) : "") + '</p>' +
     '<div class="sprint-progress" role="progressbar" aria-valuenow="' + pct + '" aria-valuemin="0" aria-valuemax="100"><div style="width:' + pct + '%"></div></div>' +
@@ -3378,7 +3381,7 @@ function sprintCardHtml(sp, asks) {
     (mine.length
       ? '<details class="task-details"' + (sp.status === "active" ? " open" : "") + '><summary>' + mine.length + ' ενέργειες</summary><ul class="sprint-asks">' +
         mine.map(function(ask) { return sprintAskRow(ask, sp.status === "closed"); }).join("") + '</ul></details>'
-      : '<p class="helptext">Άδειο — πρόσθεσε ενέργειες από το backlog.</p>') +
+      : '<p class="helptext">Άδειο — σύρε εδώ ενέργειες από το backlog.</p>') +
   '</section>';
 }
 
@@ -3392,7 +3395,7 @@ function renderSprintsView(asks) {
     html += '<div class="empty-state">Δεν υπάρχουν ακόμα sprints' + (sprintsMeta.can_manage ? " — φτιάξε το πρώτο." : ".") + '</div>';
   }
   html += projectSprints.map(function(sp) { return sprintCardHtml(sp, asks); }).join("");
-  html += '<section class="sprint-card"><div class="sprint-head"><h3>Backlog</h3></div>' +
+  html += '<section class="sprint-card" data-drop-sprint=""><div class="sprint-head"><h3>Backlog</h3></div>' +
     '<p class="sprint-stats">' + backlogAsks.length + ' ενέργειες · ' + backlogPoints + ' SP</p>' +
     (backlogAsks.length
       ? '<ul class="sprint-asks">' + backlogAsks.map(function(ask) { return sprintAskRow(ask, false); }).join("") + '</ul>'
@@ -3929,6 +3932,85 @@ document.querySelectorAll("#askStatusTabs button").forEach(function(b) {
 });
 
 checkSession();
+
+// ---------- Drag & drop: ενέργειες → sprint / status, αρχείο κειμένου → capture ----------
+// Δικό τους mime type ώστε να μη μπερδεύεται με το drag του Πίνακα (text/plain).
+const ASK_DRAG_MIME = "application/x-relay-ask";
+let draggedAskRowId = null;
+
+document.addEventListener("dragstart", function(e) {
+  const row = e.target.closest && e.target.closest("[data-ask-id]");
+  if (!row || row.closest("#boardColumns")) return;
+  if (!(filter === "__sprints__" || filter === "__asks__")) return;
+  draggedAskRowId = row.dataset.askId;
+  row.classList.add("dragging");
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData(ASK_DRAG_MIME, draggedAskRowId);
+});
+document.addEventListener("dragend", function() {
+  draggedAskRowId = null;
+  document.querySelectorAll(".dragging, .drop-over").forEach(function(el) { el.classList.remove("dragging", "drop-over"); });
+});
+
+function askDropTarget(e) {
+  if (!draggedAskRowId || !e.dataTransfer.types.includes(ASK_DRAG_MIME)) return null;
+  if (filter === "__sprints__") return e.target.closest("[data-drop-sprint]");
+  if (filter === "__asks__") {
+    const tab = e.target.closest("#askStatusTabs button");
+    return tab && (tab.dataset.sf === "accepted" || tab.dataset.sf === "done") ? tab : null;
+  }
+  return null;
+}
+document.addEventListener("dragover", function(e) {
+  const target = askDropTarget(e);
+  if (!target) return;
+  e.preventDefault();
+  document.querySelectorAll(".drop-over").forEach(function(el) { if (el !== target) el.classList.remove("drop-over"); });
+  target.classList.add("drop-over");
+});
+document.addEventListener("drop", function(e) {
+  const target = askDropTarget(e);
+  if (!target) return;
+  e.preventDefault();
+  target.classList.remove("drop-over");
+  const id = draggedAskRowId;
+  draggedAskRowId = null;
+  const ask = asksById[id];
+  if (!ask) return;
+  if (filter === "__sprints__") {
+    const sprintId = target.dataset.dropSprint || "";
+    if ((ask.sprint_id || "") !== sprintId) assignAskToSprint(id, sprintId);
+  } else if (target.dataset.sf === "done") {
+    if (ask.status !== "done") quickUpdate(id, { status: "done" });
+  } else if (ask.status !== "accepted") {
+    quickUpdate(id, ask.owner ? { status: "accepted" } : { owner: currentUser, status: "accepted" });
+  }
+});
+
+// Αρχείο κειμένου πάνω στο πεδίο καταγραφής: γεμίζει το textarea (μένει ο έλεγχος πριν δημιουργηθεί οτιδήποτε).
+(function() {
+  const box = document.getElementById("paste");
+  if (!box) return;
+  const isFile = function(e) { return e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files"); };
+  box.addEventListener("dragover", function(e) { if (isFile(e)) { e.preventDefault(); box.classList.add("drop-over"); } });
+  box.addEventListener("dragleave", function() { box.classList.remove("drop-over"); });
+  box.addEventListener("drop", function(e) {
+    if (!isFile(e)) return;
+    e.preventDefault();
+    box.classList.remove("drop-over");
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    if (!/\.(txt|eml|md|csv|log)$/i.test(file.name) && !/^text\//.test(file.type)) {
+      showToast("Υποστηρίζονται αρχεία κειμένου (.txt, .eml, .md, .csv). Για Word/Excel επικόλλησε το περιεχόμενο.");
+      return;
+    }
+    if (file.size > 500000) { showToast("Το αρχείο είναι πολύ μεγάλο (όριο 500 KB)."); return; }
+    file.text().then(function(text) {
+      box.value = box.value ? box.value + "\n\n" + text : text;
+      showToast("Φορτώθηκε το «" + file.name + "». Πάτα «Εντοπισμός προτάσεων».");
+    });
+  });
+})();
 </script>
 </body>
 </html>
