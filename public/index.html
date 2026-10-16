@@ -522,6 +522,7 @@
         <summary>⋯ Ρυθμίσεις project</summary>
         <div class="hero-menu-content">
           <button type="button" onclick="openMembers()">👥 Ομάδα project</button>
+          <button type="button" class="project-manage-action" onclick="editAccountable()">🎯 Accountable</button>
           <button type="button" class="project-manage-action" onclick="openImport()">📥 Import Master Task List</button>
           <button type="button" class="delete-project-action" onclick="deleteCurrentProject()">🗑 Διαγραφή project</button>
         </div>
@@ -2048,6 +2049,22 @@ function currentProjectName() {
   return project ? project.name : "";
 }
 
+// ---------- Accountable ανά project ----------
+async function editAccountable() {
+  closeDrawer();
+  const project = projectsById[currentProject];
+  if (!project) return;
+  const answer = prompt("Accountable για «" + project.name + "» (όνομα, π.χ. Βαγγέλης). Άδειο = καθαρισμός:", project.accountable || "");
+  if (answer === null) return;
+  const res = await fetch("/api/projects/" + encodeURIComponent(currentProject) + "/accountable", {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accountable: answer })
+  });
+  const data = await res.json().catch(function() { return {}; });
+  if (!res.ok) { alert(data.error || "Αποτυχία αποθήκευσης."); return; }
+  project.accountable = data.accountable || null;
+  renderProjectChrome(routeState);
+}
+
 // ---------- Ομάδα project ----------
 async function openMembers() {
   closeDrawer();
@@ -2214,12 +2231,11 @@ function renderImportSummary(s) {
 // Το κάθε route κρατά και το deep link (refresh / πίσω / αντιγραφή συνδέσμου).
 const PROJECT_TABS = [
   ["overview", "Επισκόπηση", "__home__"],
-  ["asks", "Ενέργειες", "__asks__"],
   ["board", "Πίνακας", "__board__"],
   ["sprints", "Sprints", "__sprints__"],
   ["gantt", "Gantt", "__gantt__"],
   ["ado", "ADO", "__ado__"],
-  ["team", "Ομάδα", "__team__"],
+  ["asks", "Ενέργειες", "__asks__"],
 ];
 let routeState = { view: "projects", project: "", tab: "" };
 let routeFocusPending = false;
@@ -2276,9 +2292,9 @@ function setDocumentTitle(route) {
 function renderProjectChrome(route) {
   const project = projectsById[route.project];
   document.getElementById("heroTitle").textContent = project ? project.name : "";
-  document.getElementById("heroSub").textContent = project && canManage(project)
-    ? "Διαχειρίζεσαι αυτό το project"
-    : "Είσαι μέλος αυτού του project";
+  document.getElementById("heroSub").textContent = project && project.accountable
+    ? "Accountable: " + project.accountable
+    : (project && canManage(project) ? "Διαχειρίζεσαι αυτό το project" : "Είσαι μέλος αυτού του project");
   document.getElementById("projectNav").innerHTML = PROJECT_TABS.map(function(t) {
     return '<a href="' + esc(projectHash(route.project, t[0])) + '"' + (t[0] === route.tab ? ' aria-current="page"' : "") + '>' + esc(t[1]) + '</a>';
   }).join("");
@@ -2462,6 +2478,7 @@ function projectsViewHtml(asksByProject) {
     }
     return '<div class="pcard"><div class="pcard-strip"></div><div class="pcard-body">' +
       '<div class="pcard-head"><span class="pmark" aria-hidden="true">' + esc(projectInitials(project.name)) + '</span><h2 style="margin:0;font-size:17px">' + esc(project.name) + '</h2></div>' +
+      (project.accountable ? '<p class="helptext" style="margin:0 0 8px">Accountable: ' + esc(project.accountable) + '</p>' : "") +
       (pills ? '<div class="pills">' + pills + '</div>' : "") +
       '<a class="btn-link" href="' + esc(projectHash(id)) + '">Άνοιγμα</a></div></div>';
   }).join("") + '</div>';

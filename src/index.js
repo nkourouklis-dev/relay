@@ -1554,10 +1554,10 @@ function createRelayMcpOperations(env) {
       async listProjects(actor) {
         const { results } = isAdmin(actor)
           ? await env.DB.prepare(
-              "SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects WHERE id != 'relay-ideas-hub' ORDER BY created_at"
+              "SELECT id, name, inbox_alias, accountable, created_by_user_id, created_at FROM projects WHERE id != 'relay-ideas-hub' ORDER BY created_at"
             ).all()
           : await env.DB.prepare(
-              `SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects
+              `SELECT id, name, inbox_alias, accountable, created_by_user_id, created_at FROM projects
                WHERE created_by_user_id = ? OR id IN (SELECT project_id FROM relay_project_members WHERE email = ?)
                ORDER BY created_at`
             ).bind(actor.id, actor.email).all();
@@ -2246,10 +2246,10 @@ export default {
         ).bind(actor.email).run();
         const { results } = isAdmin(actor)
           ? await env.DB.prepare(
-              "SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects WHERE id != 'relay-ideas-hub' ORDER BY created_at"
+              "SELECT id, name, inbox_alias, accountable, created_by_user_id, created_at FROM projects WHERE id != 'relay-ideas-hub' ORDER BY created_at"
             ).all()
           : await env.DB.prepare(
-              `SELECT id, name, inbox_alias, created_by_user_id, created_at FROM projects
+              `SELECT id, name, inbox_alias, accountable, created_by_user_id, created_at FROM projects
                WHERE created_by_user_id = ? OR id IN (SELECT project_id FROM relay_project_members WHERE email = ?)
                ORDER BY created_at`
             ).bind(actor.id, actor.email).all();
@@ -2552,6 +2552,20 @@ export default {
         } catch (e) {
           return json({ error: e.message || "Αποτυχία δημιουργίας project" }, 400);
         }
+      }
+
+      // --- Projects: accountable (ελεύθερο κείμενο) ---
+      const accountableMatch = path.match(/^\/api\/projects\/([^/]+)\/accountable$/);
+      if (accountableMatch && request.method === "PUT") {
+        const project = await getAccessibleProject(env, actor, accountableMatch[1]);
+        if (!project) return json({ error: "Το project δεν βρέθηκε" }, 404);
+        if (!canManageProject(actor, project)) {
+          return json({ error: "Μόνο ο δημιουργός του project ή admin μπορεί να το αλλάξει." }, 403);
+        }
+        const body = await request.json().catch(() => ({}));
+        const accountable = String(body.accountable || "").trim().slice(0, 120);
+        await env.DB.prepare("UPDATE projects SET accountable = ? WHERE id = ?").bind(accountable || null, project.id).run();
+        return json({ ok: true, accountable });
       }
 
       // --- Projects: διαγραφή ---
